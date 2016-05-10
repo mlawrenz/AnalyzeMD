@@ -1,0 +1,7 @@
+trajin ../aln-desmond_Cbl_1_2_1400ns.dcd
+reference model-2y1m-reference-noions.pdb
+rmsd all * reference out rmsd.dat perres perresout rmsd-all-perresout.dat perresavg rmsd-all-perresavg.dat
+atomicfluct out rmsf-all.dat byres
+atomicfluct out rmsf-800ns-bb.dat @CA byres
+
+
