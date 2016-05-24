@@ -134,20 +134,21 @@ def map_residues(ref):
     amber_resnum=1
     prev_resnum=0
     for line in pdbfile.readlines():
-        if len(line.split()) < 2:
-            continue
-        resnum = str(line[23:26].strip())
-        chain = str(line[20:22].strip())
-        if chain not in residue_mapper.keys():
-            residue_mapper[chain]=dict()
-        if prev_resnum==0:
-            prev_resnum=resnum
-            residue_mapper[chain][resnum]=str(amber_resnum)
-            amber_resnum+=1
-        if resnum!=prev_resnum:
-            prev_resnum=resnum
-            residue_mapper[chain][resnum]=str(amber_resnum)
-            amber_resnum+=1
+        if line.split()[0]=='ATOM' or line.split()[0]=='HETATM':
+            resnum = str(line[23:26].strip())
+            chain = str(line[20:22].strip())
+            if chain not in residue_mapper.keys():
+                residue_mapper[chain]=dict()
+            if prev_resnum==0:
+                prev_resnum=resnum
+                residue_mapper[chain][resnum]=str(amber_resnum)
+                amber_resnum+=1
+            if resnum!=prev_resnum:
+                prev_resnum=resnum
+                residue_mapper[chain][resnum]=str(amber_resnum)
+                amber_resnum+=1
+        else:
+            pass
     return residue_mapper
 
 
@@ -188,8 +189,6 @@ def percent_score(percent):
 def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
     format_data=dict()
     all_hbonds=[]
-    import pdb
-    pdb.set_trace()
     pymol_handle=open('%s_hbonds.pml' % outname, 'w')
     pymol_handle.write('load %s\n' % ref)
     pymol_handle.write('sel protein, polymer\n')
@@ -243,10 +242,7 @@ def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
     return 
 
 
-
 def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
-    import pdb
-    pdb.set_trace()
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
@@ -359,9 +355,11 @@ def hbonds(cwd, outname, ref, trjfile, mask1, mask2):
 
 
 def selection_checker(cwd, reffile, selection):
+    import pdb
+    pdb.set_trace()
     ref=os.path.abspath(reffile)
     ref_basename=os.path.basename(ref)
-    make_analysis_folder(cwd, 'hbonds')
+    make_analysis_folder(cwd, 'selection')
     residue_mapper=map_residues(ref)
     new_ambmask=check_cluster_pdbfile(ref, selection, outname='test')
     return
@@ -424,8 +422,9 @@ $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
     mask_parser=argparse.ArgumentParser(add_help=False)
     mask_parser.add_argument('--selection', nargs='*', dest='selection', help='''Residues to use for analysis, with separated by
-commas and dashes and chains specific at the end with a period. If you do not
+commas and dashes and chains specified at the end with a period. If you do not
 provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
+Can include multiple selections from multiple chains.
 ''')
     x_parser=subparsers.add_parser("selection_check", parents=[mask_parser], help='''
 pass in the mask and get the corresponding AMBER numbers''')
