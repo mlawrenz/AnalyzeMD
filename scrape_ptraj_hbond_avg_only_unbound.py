@@ -4,20 +4,6 @@ import numpy
 import os
 import sys
 
-def get_resid_correspond():
-    if not os.path.isfile('resid_correspond'):
-        print "NEED FILE WITH RESIDUE CORRESPONDENCE"
-        sys.exit()
-    #orig_correspond_name=numpy.loadtxt('resid_correspond', usecols=(0,))
-    orig_correspond_num=numpy.loadtxt('resid_correspond', usecols=(1,),dtype=int)
-    #new_correspond_name=numpy.loadtxt('resid_correspond', usecols=(2,))
-    new_correspond_num=numpy.loadtxt('resid_correspond', usecols=(3,), dtype=int)
-    resid=dict()
-    for (num1, num2) in zip(new_correspond_num,orig_correspond_num):
-        resid[num1]=num2
-    return resid
-
-
 def percent_score(percent):
     if percent >= 50.0:
         color='red'
@@ -27,7 +13,7 @@ def percent_score(percent):
         color='yellow'
     return color
 
-def parse_all_hbonds(files, prefix, resid, ref):
+def parse_all_hbonds(files, prefix, residues, ref):
     format_data=dict()
     all_hbonds=[]
     pymol_handle=open('%s_pymol_hbond_label.py' % prefix, 'w')
@@ -84,27 +70,3 @@ def parse_all_hbonds(files, prefix, resid, ref):
     return 
 
 
-def main(args):
-    prefix=args.prefix
-    ref=args.ref
-    # if old number is > 163 it is ubiquitin
-    resid=get_resid_correspond()
-    files=glob.glob('%s*.dat' % prefix)
-    parse_all_hbonds(files, prefix, resid, ref)
-    #data=get_data(files)
-    #import pandas
-    #df=pandas.DataFrame.from_dict(format_data)
-    #df.fillna(0, inplace=True)
-    #new_df=df[(df['apo']>8)|(df['bound']>8)]
-    #new_df.to_csv('compare_apo_holo.csv', sep='\t')
-    #update_data=new_df.to_dict()
-    #write_pymol_file(update_data)
-    return
-
-
-if __name__=="__main__":
-    parser = argparse.ArgumentParser(description='Run basic docking model, given SD ligand, and grid and job input files')
-    parser.add_argument('--prefix', dest='prefix', help='prefix for agr files')
-    parser.add_argument('--ref', dest='ref', help='ref PDB file')
-    args = parser.parse_args()
-    main(args)

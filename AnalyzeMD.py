@@ -1,8 +1,12 @@
 from schrodinger.trajectory.desmondsimulation import create_simulation
-from pdb_bfactor import *
+import glob
+import shutil
+import numpy
 import sys
+from pdb_bfactor import *
+
 import schrodinger.trajectory.analysis as analysis
-from schrodinger.structure import write_ct, write_ct_pdb
+from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
 from schrodinger.structutils.analyze import evaluate_asl
 from schrodinger.application.desmond.util import get_indices, parse_slice
 import os
@@ -38,34 +42,57 @@ def write_rmsd_ptraj_file(ref, trjfile):
 trajin {0}
 reference {1}
 # must align by bb first
-rmsd bb @CA reference out rmsd-bb.dat perres perresout rmsd-bb-perresout.dat perresavg rmsd-bb-perresavg.dat
-rmsd all !@H* reference out rmsd-all.dat perres perresout rmsd-all-perresout.dat perresavg rmsd-all-perresavg.dat
-atomicfluct out rmsf-all.dat !@H* byres
-atomicfluct out rmsf-bb.dat @CA byres
+rmsd bb @CA reference out rmsd-aggregate-bb.dat perres perresout rmsd-bb-perresout.dat perresavg rmsd-bb-perresavg.dat
+rmsd all !@H* reference out rmsd-aggregate-all.dat perres perresout rmsd-all-perresout.dat perresavg rmsd-all-perresavg.dat
+atomicfluct out rmsf-all-perresavg.dat !@H* byres
+atomicfluct out rmsf-bb-perresavg.dat @CA byres
 '''.format(trjfile, ref))
     return
 
 
-def write_clustering_ptraj_file(ref, trjfile, ambmask, d):
-    ohandle=open('ptraj-cluster.in', 'w')
+def write_strip_ptraj_file(ref, ambmask, outname):
+    ohandle=open('ptraj-strip.in', 'w')
     ohandle.write('''
 trajin  {0}
-reference {1}
+strip !{1}
+trajout {2}-cluster-check.pdb'''.format(ref, ambmask, outname))
+    return
+    
+
+def write_clustering_ptraj_file(ref, trjfile, ambmask, d, outname):
+    ohandle=open('ptraj-cluster.in', 'w')
+    ohandle.write('''
+trajin  {1}
+reference {0}
 rms reference out rmsd-ca.dat @CA
-cluster {2} mass epsilon {3} out cluster-d{3}_out averagelinkage gracecolor summary cluster-d{3}-summary_out info cluster-d{3}-Cluster_info repout cluster-d{3}-centroid repfmt pdb
-'''.format(ref, trjfile, ambmask, d))
+cluster {2} mass epsilon {3} out {4}-cluster-d{3}_out averagelinkage gracecolor summary {4}-cluster-d{3}-summary_out info {4}-cluster-d{3}-Cluster_info repout {4}-cluster-d{3}-centroid repfmt pdb
+'''.format(ref, trjfile, ambmask, d, outname))
     return
 
 
-def write_load_bfactor_pml(ref_basename):
+def write_hbond_ptraj(trjfile, mask1, mask2, outname):
+#hbond H1 donormask :1-64.O= acceptormask :1-64.O= nointramol solventdonor :WAT solventacceptor :WAT.O o ut numhb.dat avgout avghb.dat solvout avgsolvent.dat bridgeout bridge.dat 
+    ohandle=open('ptraj-hbonds.in', 'w')
+    ohandle.write('''
+trajin {0}
+hbond H1 donormask :{1}@N*,O* acceptormask :{2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series 
+hbond H2 acceptormask :{1}&@N*,O* donormask :{2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series 
+'''.format(trjfile, mask1, mask2, outname))
+    return
+
+
+
+
+def write_load_bfactor_pml(datatype, ref_basename, maxval):
+    maxval=int(numpy.ceil(maxval))
     ohandle=open('load_bfactor.pml', 'w')
     ohandle.write('''
-load bfactor-%s
-spectrum b, blue_white_red, minimum=0, maximum=3
+load bfactor-%s-%s
+spectrum b, blue_white_red, minimum=0, maximum=%s
 show cartoon
 hide lines
 hide (h. and (e. c extend 1))
-''' % ref_basename)
+''' % (datatype, ref_basename, maxval))
     return
 
 def make_analysis_folder(cwd, name):
@@ -74,87 +101,356 @@ def make_analysis_folder(cwd, name):
     os.chdir('%s/%s-analysis' % (cwd, name))
     return
 
+def catch_output_and_errors(output, error, name):
+    ohandle=open('%s.err' % name, 'w')
+    for l in output:
+        ohandle.write('%s\n' % l)
+    ohandle.close()
+    
+    numpy.savetxt('ptraj-rmsd.err', err, fmt='%s')
+
+def parse_ambmask(residue_mapper, selection):
+    total_residues_list=[]
+    new_residues_list=[]
+    for mask in selection:
+        chain=mask.split('.')[-1]
+        residues_list=mask.split('.')[0].split(',')
+        for x in residues_list:
+            x=x.strip(':')
+            if '-' in x:
+                start=int(x.split('-')[0])
+                end=int(x.split('-')[1])
+                for i in range(start, end+1):
+                    total_residues_list.append('%s.%s' % (chain, str(i)))
+                    new_residues_list.append(residue_mapper[chain][str(i)])
+            else:
+                total_residues_list.append('%s.%s' % (chain, str(x)))
+                new_residues_list.append(residue_mapper[chain][str(x)])
+    return total_residues_list, new_residues_list
+
+def map_residues(ref):
+    residue_mapper=dict()
+    pdbfile=open(ref)
+    amber_resnum=1
+    prev_resnum=0
+    for line in pdbfile.readlines():
+        if len(line.split()) < 2:
+            continue
+        resnum = str(line[23:26].strip())
+        chain = str(line[20:22].strip())
+        if chain not in residue_mapper.keys():
+            residue_mapper[chain]=dict()
+        if prev_resnum==0:
+            prev_resnum=resnum
+            residue_mapper[chain][resnum]=str(amber_resnum)
+            amber_resnum+=1
+        if resnum!=prev_resnum:
+            prev_resnum=resnum
+            residue_mapper[chain][resnum]=str(amber_resnum)
+            amber_resnum+=1
+    return residue_mapper
+
+
+        
+def check_cluster_pdbfile(ref, selection, outname):
+    residue_mapper=map_residues(ref)
+    total_residue_list, new_residue_list=parse_ambmask(residue_mapper, selection)
+    new_ambmask=','.join([str(i) for i in new_residue_list])
+    new_ambmask=':%s' % new_ambmask
+    write_strip_ptraj_file(ref, new_ambmask, outname)
+    #write_strip_ptraj_file(ref, ambmask, outname)
+    command='%s/bin/cpptraj %s ptraj-strip.in' %  (os.environ['AMBERHOME'], ref)
+    output, err=run_linux_process(command)
+    pdbfile=open('%s-cluster-check.pdb' % outname)
+    amber_residues=[]
+    for line in pdbfile.readlines():
+        if 'ANISOU' in line:
+            print "PDB reference contains ANISOU lines, please remove these first"
+            sys.exit()
+        if 'CA' in line:
+            amber_residues.append(''.join([line.split()[3], line.split()[5]]))
+    pdbfile.close()
+    print "You asked for %s" % selection
+    print "We converted to %s" % new_ambmask
+    print "You are getting:"
+    print amber_residues
+    return new_ambmask
+
+def percent_score(percent):
+    if percent >= 50.0:
+        color='red'
+    if percent >= 10 and percent < 50.0:
+        color='pink' 
+    if percent < 10:
+        color='yellow'
+    return color
+
+def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
+    format_data=dict()
+    all_hbonds=[]
+    import pdb
+    pdb.set_trace()
+    pymol_handle=open('%s_hbonds.pml' % outname, 'w')
+    pymol_handle.write('load %s\n' % ref)
+    pymol_handle.write('sel protein, polymer\n')
+    pymol_handle.write('show cartoon, protein\n')
+    pymol_handle.write('hide lines, protein\n')
+    ohandle=open('%s_all_hbonds.dat' % outname, 'w')
+    for file in files:
+        print "-----%s----" % file
+        fhandle=open(file)
+        for line in fhandle.readlines():
+            if '#' in line:
+                continue
+            acceptor=line.split()[0] 
+            donor=line.split()[1] 
+            fraction=line.split()[4]
+            percent=float(fraction)*100
+            distance=line.split()[5]
+            angle=line.split()[6]
+            if fraction < 0.05:
+                continue
+            res1_num=int(acceptor.split('@')[0].split('_')[1])   
+            res1_name=acceptor.split('@')[0].split('_')[0]
+            # mapper keys are amber numbers
+            orig_res1_num=residue_mapper[int(res1_num)]
+            res1_chain=str(chain_mapper[int(res1_num)])
+            atom1=acceptor.split('@')[1].split('-')[0]
+            res2_num=int(donor.split('@')[0].split('_')[1])   
+            res2_name=donor.split('@')[0].split('_')[0]
+            orig_res2_num=residue_mapper[int(res2_num)]
+            res2_chain=str(chain_mapper[int(res2_num)])
+            atom2=donor.split('@')[1].split('-')[0]
+            hbond='%s%s@%s-%s%s@%s' % (res1_name,orig_res1_num,atom1,res2_name, orig_res2_num,atom2)
+            print hbond, percent
+            ohandle.write('%s\t%s\n' % (hbond, percent))
+            pymol_accept='%s/%s/%s' % (res1_chain, orig_res1_num, atom1)
+            pymol_donor='%s/%s/%s' % (res2_chain, orig_res2_num, atom2)
+            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res1_chain, orig_res1_num))
+            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res2_chain, orig_res2_num))
+            hcolor=percent_score(percent)
+            if hcolor=='red':
+                pymol_handle.write('dist %s_strong_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
+                pymol_handle.write('color %s, %s_strong_hbonds\n' % (hcolor, outname))
+            if hcolor=='pink':
+                pymol_handle.write('dist %s_medium_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
+                pymol_handle.write('color %s, %s_medium_hbonds\n' % (hcolor, outname))
+            if hcolor=='yellow':
+                pymol_handle.write('dist %s_weak_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
+                pymol_handle.write('color %s, %s_weak_hbonds\n' % (hcolor, outname))
+    pymol_handle.close()
+    ohandle.close()
+    return 
+
+
+
 def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
+    import pdb
+    pdb.set_trace()
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
     #make sure have absolute path since working in analysis folder now
-    make_analysis_folder(cwd, datatype)
+    make_analysis_folder(cwd, 'rmsd')
     write_rmsd_ptraj_file(ref, trjfile)
     command='%s/bin/cpptraj %s ptraj-rmsd.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
+    numpy.savetxt('ptraj-rmsd.out', output.split('\n'), fmt='%s')
     if 'rror' in err:
+        numpy.savetxt('ptraj-rmsd.err', err.split('\n'), fmt='%s')
         print "ERROR IN CPPTRAJ RMSD CALCULATION"
+        print "CHECK ptraj-rmsd.err"
         print err
         sys.exit()
     f = open(ref,'r')
     pdb_data = f.readlines()
     f.close()
-    if datatype=='rmsd-all':
-        datafile='rmsd-all-perresavg.dat'
-    if datatype=='rmsd-bb':
-        datafile='rmsd-bb-perresavg.dat'
-    if datatype=='rmsf-all':
-        datafile='rmsf-all.dat'
+    datafile='%s-perresavg.dat' % datatype
     if datatype=='rmsf-bb':
-        datafile='rmsf-bb.dat'
-    out=map_file_by_index(datafile, pdb_data)
-    print "Warning: Mapping data by residue index from datafile to ref pdbfile"
-    print "Warning: Make sure atoms correpond!"
-    outfilename='bfactor-%s' % ref_basename
+        bb=check_pdb_file(pdb_data)
+        maxval, out=map_file_by_index(datafile, pdb_data, bb)
+    else:
+        maxval, out=map_file_by_index(datafile, pdb_data)
+    outfilename='bfactor-%s-%s' % (datatype, ref_basename)
     outfile=open(outfilename, 'w')
     for line in out:
         outfile.write(line)
     outfile.close()
-    write_load_bfactor_pml(ref)
-
-def hbond_analysis():
+    write_load_bfactor_pml(datatype, ref_basename, maxval)
+    read_handle=open('README', 'w')
+    read_handle.write('''
+rmsd-aggregate-all.dat  # RMSD of all atoms in selection for each time point
+rmsd-all-perresavg.dat  # RMSD average for each residue over the simulation
+rmsd-all-perresout.dat  # RMSD for each residue for each time point
+rmsf-all-perresavg.dat  # RMSF average for each residue over the simulation
+bfactor-%s-%s           # PDB file with B factors filled with specified datatype
+''' % (datatype, ref_basename))
+    read_handle.close()
     return
 
-def clustering(ref, trjfile, cluster, d=1.0):
-    ambmask=':%s' % cluster
-    write_clustering_ptraj_file(ref, trjfile, ambmask, d)
+
+def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
+    ref=os.path.abspath(ref)
+    ref_basename=os.path.basename(ref)
+    trjfile=os.path.abspath(trjfile)
+    #make sure have absolute path since working in analysis folder now
+    make_analysis_folder(cwd, 'clustering')
+    #check if already clustered with this outname
+    if not os.path.exists('%s-d%s-cluster-centroid-pdbs/' % (outname, d)):
+        os.mkdir('%s-d%s-cluster-centroid-pdbs/' % (outname,d))
+    else:
+        print "Existing clustering results for %s-d%s-cluster-centroid-pdbs/ so will not overwite" % (outname, d)
+        sys.exit()
+    
+    # test that the residues you cluster on are the right ones
+    new_ambmask=check_cluster_pdbfile(ref, cluster, outname)
+    write_clustering_ptraj_file(ref, trjfile, new_ambmask, d, outname)
     command='%s/bin/cpptraj %s ptraj-cluster.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
+    numpy.savetxt('ptraj-cluster.out', output.split('\n'), fmt='%s')
+    if 'rror' in err:
+        numpy.savetxt('ptraj-cluster.err', err.split('\n'), fmt='%s')
+        print "ERROR IN CPPTRAJ RMSD CALCULATION"
+        print "CHECK ptraj-cluster.err"
+        print err
+        sys.exit()
+    fhandle=open('%s-cluster-d%s-summary_out' % (outname, d))
+    count=0
+    num=0
+    total_fraction=0
+    for line in fhandle.readlines():
+        if '#' in line:
+            pass
+        else:
+            num+=1
+            fraction=float(line.split()[2])
+            total_fraction+=fraction
+            if total_fraction > 0.90:
+                print "%s clusters represent 90 percent of simulation" % num
+                break
+    for x in range(0, (num)):
+        shutil.move('%s-cluster-d%s-centroid.c%s.pdb' % (outname, d, x), '%s-d%s-cluster-centroid-pdbs/' % (outname, d))
+    extra_files=glob.glob('%s-cluster-d%s-centroid*pdb' % (outname, d))
+    for file in extra_files:
+        os.remove(file)
+    return
+
+def hbonds(cwd, outname, ref, trjfile, mask1, mask2):
+    ref=os.path.abspath(ref)
+    ref_basename=os.path.basename(ref)
+    trjfile=os.path.abspath(trjfile)
+    make_analysis_folder(cwd, 'hbonds')
+    #make sure have absolute path since working in analysis folder now
+    write_hbond_ptraj(trjfile, mask1, mask2, outname)
+    command='%s/bin/cpptraj %s ptraj-hbonds.in' %  (os.environ['AMBERHOME'], ref)
+    output, err=run_linux_process(command)
+    numpy.savetxt('ptraj-hbonds.out', output.split('\n'), fmt='%s')
+    if 'rror' in err:
+        numpy.savetxt('ptraj-hbonds.err', err.split('\n'), fmt='%s')
+        print "ERROR IN CPPTRAJ RMSD CALCULATION"
+        print "CHECK ptraj-cluster.err"
+        print err
+        sys.exit()
+    files=glob.glob('avghb-%s-*.dat' % outname)
+    chain_mapper, residue_mapper, tmp=map_residues(ref, ':1')
+    parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref)
+    print "wrote %s_hbonds.pml" % outname
+    return
+
+
+def selection_checker(cwd, reffile, selection):
+    ref=os.path.abspath(reffile)
+    ref_basename=os.path.basename(ref)
+    make_analysis_folder(cwd, 'hbonds')
+    residue_mapper=map_residues(ref)
+    new_ambmask=check_cluster_pdbfile(ref, selection, outname='test')
+    return
+
 
 
 def main(args):
+    try: 
+        os.environ['AMBERHOME']
+    except KeyError:
+        print "AMBERHOME environment variable is not set"
+        print "On AWS this is /home/mlawrenz/amber14/"
+        sys.exit()
     cwd=os.getcwd()
-    if not os.environ['AMBERHOME']:
-        print "AMBERHOME IS NOT SET"
+    if args.reffile is None:
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    if not os.path.exists(args.reffile):
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    if args.analysis=='selection_check':
+        selection_checker(cwd, args.reffile, args.selection)
+        sys.exit()
+    if args.trjfile is None:
+        print "SUPPLY A TRJFILE"
+        sys.exit()
+    if not os.path.exists(args.trjfile):
+        print "SUPPLY A TRJFILE"
         sys.exit()
     if args.analysis=='rmsd_calc':
-        print "RUNNING RMSD/RMSF ANALYSIS"
+        print "Running %s analysis" % args.rmsdtype
         rmsd_and_rmsf(cwd, args.reffile, args.trjfile, args.rmsdtype)
     if args.analysis=='clustering':
-        print "RUNNING CLUSTERING ON RESIDUES %s" % args.clustermask
-        clustering(cwd, args.reffile, args.trjfile, args.clustermask, args.distance)
-    print "done"
+        print "Running clustering analysis" 
+        clustering(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.distance)
+    if args.analysis=='hbonds':
+        hbonds(cwd, args.outname, args.reffile, args.trjfile, args.mask1, args.mask2)
+    print "done with analysis"
     
 
 
 def parse_commandline():
     parser = argparse.ArgumentParser(description='''
-Run chosen analysis on MD DCD
-trajectory file. Choose rmsd or clustering. See additional options for each
+Run chosen analysis on MD DCD trajectory file. Requires a reference PDBfile and
+DCD trajectory passed in. Choose analysis workflow: rmsd or clustering. See additional options for each
 analysis choice by running: 
-$SCHRODINGER/run /home/mlawrenz/AnalyzeMD/AnalyzeMD.py clustering -h''')
+$SCHRODINGER/run /home/mlawrenz/AnalyzeMD/AnalyzeMD.py clustering -h
+Examples:
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd  rmsd_calc rmsd-all
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd clustering --selection '50-55,131.B' ':48,49.F' -o inter-chain -d 1.0
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o 4mdk-holo-redo --group1 1-163 --group2 164-240^C
+
+''')
 
 
     #parser.add_argument("analysis", choices=["rmsd", "clustering", "hbond"])
     parser.add_argument('-r', '--reffile', dest='reffile',
-                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY')
-    parser.add_argument('-t', '--trjfile', dest='trjfile',
-                      help='DCD trj for trajectory analysis')
+                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY', required=True)
+    parser.add_argument('-t', '--trjfile', dest='trjfile', help='DCD trj for trajectory analysis')
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
-
-    r_parser=subparsers.add_parser("rmsd_calc")
+    mask_parser=argparse.ArgumentParser(add_help=False)
+    mask_parser.add_argument('--selection', nargs='*', dest='selection', help='''Residues to use for analysis, with separated by
+commas and dashes and chains specific at the end with a period. If you do not
+provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
+''')
+    x_parser=subparsers.add_parser("selection_check", parents=[mask_parser], help='''
+pass in the mask and get the corresponding AMBER numbers''')
+    r_parser=subparsers.add_parser("rmsd_calc", help='''
+Computes RMSD (distance from reference structure) and RMSF (distance from average
+structure) for all heavy atoms or just backbone atoms. All output is written as
+described in the README section of rmsd-analysis/ directory that is created.
+The chosen datatype is mapped to the bfactors of reference file for visualization.
+bfactor-${choice}-${referencefile}.pdb
+''')
     r_parser.add_argument('rmsdtype',choices=['rmsd-all', 'rmsd-bb', 'rmsf-all', 'rmsf-bb'], help='type of rmsd or rmsf calculation, using all heavy atoms or just backbone CA atoms')
-    c_parser=subparsers.add_parser("clustering")
-    c_parser.add_argument('-c', '--cluster', dest='clustermask',
-                      help='residues to use for clustering, separated by commas and dashes i.e. 45-55,68,128,155')
+    c_parser=subparsers.add_parser("clustering", parents=[mask_parser], help='''
+Uses hierarchical clustering and average linkage for RMSD of selected residues
+passed in with selection, and the minimum distance between clusters is
+specified by the distance argument.''')
     c_parser.add_argument('-d', '--distance', dest='distance', default=2.0,
                       help='clustering RMSD cutoff to define clusters. recommend 2 for most small changes.')
+    c_parser.add_argument('-o', '--outname', dest='outname', default='set',
+                      help='name for clustering output, will precede a name NAME-cluster-*')
+    h_parser=subparsers.add_parser("hbonds", help=''' Compute hydrogen bonds between two groups of residues (can be all to all with same selection''')
+    h_parser.add_argument('-o', '--outname', dest='outname', default='set',
+                      help='name for hbonds output, please do not use dashes or weird characters')
+    h_parser.add_argument('--group1', dest='mask1', help='group1 of residues')
+    h_parser.add_argument('--group2', dest='mask2', help='group2 of residues')
+
     args = parser.parse_args()
     return args
 

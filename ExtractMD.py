@@ -57,7 +57,7 @@ def extract_frames_from_trajectory(options):
     csim = create_simulation(cmsfile, trjfile)
 
     # hardcode basename
-    basename = 'protein-%s' % basename
+    basename = 'extract-%s' % basename
     frames='::5'
     total_frame = csim.total_frame
     slice_list = _parse_frames(frames)
@@ -75,17 +75,33 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
     program='/home/mlawrenz/LINUXAMD64/bin/catdcd4.0/catdcd'
     if not os.path.exists('%s/analysis' % cwd):
         os.mkdir('%s/analysis' % cwd)
-    command='{0} -o {1}/analysis/{2}.dcd -otype dcd -s {3}/{2}_00000.pdb -pdb `ls -v {3}/{2}/{2}*pdb`'.format(program, cwd, basename, tmp_folder)
-    output, error=run_linux_process(command)
+    command='{0} -o {1}/analysis/{2}.dcd -otype dcd -s {3}/{2}_00000.pdb -pdb `ls -v {3}/{2}*pdb`'.format(program, cwd, basename, tmp_folder)
+    os.system(command)
+    #output, err=run_linux_process(command)
+    #print output.split('\n')
+    #if 'rror' in err:
+    #    numpy.savetxt('catdcd.err', err.split('\n'), fmt='%s')
+    #    print "ERROR IN CATDCD"
+    #    print "CHECK catdcd.err"
+    #    print err
+    #    sys.exit()
     command='cp {0}/{1}_00000.pdb {2}/analysis/{1}_reference.pdb'.format(tmp_folder, basename, cwd)
-    output, error=run_linux_process(command)
+    output, err=run_linux_process(command)
+    if 'rror' in err:
+        numpy.savetxt('copy.err', err.split('\n'), fmt='%s')
+        print "ERROR IN COPY"
+        print "CHECK copy.err"
+        print err
+        sys.exit()
     return
 
 
 def main(options):
     cwd=os.getcwd()
     tmp_folder, basename=extract_frames_from_trajectory(options)
+    print "Converting to DCD"
     convert_desmond_to_dcd(cwd, tmp_folder, basename)
+    print "Cleaning up"
     shutil.rmtree(tmp_folder)
     return
     

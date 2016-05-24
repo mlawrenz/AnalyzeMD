@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import numpy
 import optparse
 import sys
 
@@ -17,52 +18,20 @@ to read into pymol use:
 """
 
 
-def map_file_to_resnum(datafile, pdb_data):
-    """
-    Parses input from a two column data file, creating a dictionary of
-    column[0]:column[1] key/value pairs for resid:data correspondence.  
-    Goes through pdb line by line.  If residue is in dictionary data_dict,
-    the b-factor is replaced in output_file by the dictionary value.  If the
-    residue is not in the dictionary, the b-factor is given value 0.0.
-    Returns void.
-    """
-    # Read in file
-    col1=[]
-    col2=[]
-    tmp=open(datafile)
-    for line in tmp:
-        if '#' in line:
-            continue
-        col1.append(float(line.split()[0]))
-        col2.append(float(line.split()[1]))
-    #import numpy
-    #col1=numpy.loadtxt(datafile, usecols=(0,))
-    #col2=numpy.loadtxt(datafile, usecols=(1,))
-
-    data_dict = dict()
-    for (resid, d) in zip(col1, col2):
-        data_dict[int(resid)]=d
-
-
-    out = []
+def check_pdb_file(pdb_data):
+    prev_resnum=0
+    index=0
+    bb=[]
+    compare=dict()
     for line in pdb_data:
-        if line[0:6] == "ATOM  ":
+        if 'ATOM' in line or 'HETATM' in line:
             resnum = int(line[23:26].strip())
-            if resnum in data_dict.keys():
-                out.append("%s%6.2F%s" % (line[:60],data_dict[resnum],
-                                          line[66:]))
-            else:
-                out.append("%s%6s%s" % (line[:60],"NA",line[66:]))
-        
-        elif line[0:6] == "HETATM":
-            out.append("%s%6s%s" % (line[:60],"NA",line[66:]))
-        
-        else:
-            out.append(line)
-    
-    return out
+            if line.split()[2]=='CA':
+                bb.append(resnum)
+    return bb
 
-def map_file_by_index(datafile, pdb_data):
+
+def map_file_by_index(datafile, pdb_data, bb=False):
 #    """
 #    adds first data to first residue, without resid mapping
 #    col2=
@@ -78,45 +47,59 @@ def map_file_by_index(datafile, pdb_data):
     out = []
     prev_resnum=0
     index=0
-    print "in map function"
+    #print "in map function"
+    num_residues=1
     for line in pdb_data:
-        if line[0:6] == "ATOM  ":
+        if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
             resnum = int(line[23:26].strip())
             if prev_resnum==0:
                 prev_resnum=resnum
             if resnum!=prev_resnum:
                 prev_resnum=resnum
-                index+=1
-            out.append("%s%6.2F%s" % (line[:60],col2[index],
-                                          line[66:]))
-        elif line[0:6] == "HETATM":
-            print "not changing for HETATM entry"
-            out.append("%s%6s%s" % (line[:60],"NA",line[66:]))
-        
+                if bb is not False:
+                    if not resnum in bb:
+                        print "excluding entry ", line.split()[3]
+                    else:
+                        num_residues+=1
+                        index+=1
+                        pass
+                else:
+                   num_residues+=1
+                   index+=1
+            if bb is not False:
+                if not resnum in bb:
+                    out.append("%s%s%s" % (line[:60],'  NA', line[66:]))
+                else:
+                    out.append("%s%6.2F%s" % (line[:60],col2[index], line[66:]))
+            else:
+                out.append("%s%6.2F%s" % (line[:60],col2[index], line[66:]))
         else:
             out.append(line)
     
-    return out
+    if len(col1) != num_residues:
+        print "MISMATCH IN NUMBER OF ATOMS"
+        print "PDBFILE %s AND DATAFILE %s" % (num_residues, len(col1))
+        sys.exit()
+    else:
+        print "Wrote data for %s residues to bfactor-pdbfile" % num_residues
+    # pass this as estimate for the pymol color spectrum
+    maxval=numpy.percentile(col2, 90)
+    return maxval, out
 
 
-def main(pdbfile, datafile, mapresid=False):
+def main(pdbfile, datafile, bb_flag=False):
 #    """
 #    Call if program called from command line.
 #    """
     f = open(pdbfile,'r')
     pdb_data = f.readlines()
     f.close()
-
-    if mapresid==True:
-        #print "Mapping data by resid from datafile to pdbfile"
-        #print "Make sure atoms correpond!"
-        print "THIS ISN'T WORKING R N"
-        #out=map_file_to_resnum(datafile, pdb_data)
+    if bb_flag==True:
+        bb=check_pdb_file(pdb_data)
+        maxval, out=map_file_by_index(datafile, pdb_data, bb)
     else:
-        print "running file map"
-        out=map_file_by_index(datafile, pdb_data)
-        print "Warning: Mapping data by residue index from datafile to pdbfile"
-        print "Warning: Make sure atoms correpond!"
+        print "Mapping data to PDB file"
+        maxval, out=map_file_by_index(datafile, pdb_data)
     outfilename='bfactor-%s' % pdbfile
     outfile=open(outfilename, 'w')
     for line in out:
