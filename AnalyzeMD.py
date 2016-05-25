@@ -114,18 +114,30 @@ def parse_ambmask(residue_mapper, selection):
     new_residues_list=[]
     for mask in selection:
         chain=mask.split('.')[-1]
-        residues_list=mask.split('.')[0].split(',')
-        for x in residues_list:
-            x=x.strip(':')
-            if '-' in x:
-                start=int(x.split('-')[0])
-                end=int(x.split('-')[1])
-                for i in range(start, end+1):
-                    total_residues_list.append('%s.%s' % (chain, str(i)))
-                    new_residues_list.append(residue_mapper[chain][str(i)])
+        if '*' in mask:
+            if chain=='*':
+                for chain in residue_mapper.keys():
+                    for res in sorted(residue_mapper[chain].keys()):
+                        total_residues_list.append('%s.%s' % (chain, str(res)))
+                        new_residues_list.append(residue_mapper[chain][res])
             else:
-                total_residues_list.append('%s.%s' % (chain, str(x)))
-                new_residues_list.append(residue_mapper[chain][str(x)])
+                #chain is specified
+                for res in sorted(residue_mapper[chain].keys()):
+                    total_residues_list.append('%s.%s' % (chain, str(res)))
+                    new_residues_list.append(residue_mapper[chain][res])
+        else:
+            residues_list=mask.split('.')[0].split(',')
+            for x in residues_list:
+                x=x.strip(':')
+                if '-' in x:
+                    start=int(x.split('-')[0])
+                    end=int(x.split('-')[1])
+                    for i in range(start, end+1):
+                        total_residues_list.append('%s.%s' % (chain, str(i)))
+                        new_residues_list.append(residue_mapper[chain][str(i)])
+                else:
+                    total_residues_list.append('%s.%s' % (chain, str(x)))
+                    new_residues_list.append(residue_mapper[chain][str(x)])
     return total_residues_list, new_residues_list
 
 def map_residues(ref):
@@ -355,8 +367,6 @@ def hbonds(cwd, outname, ref, trjfile, mask1, mask2):
 
 
 def selection_checker(cwd, reffile, selection):
-    import pdb
-    pdb.set_trace()
     ref=os.path.abspath(reffile)
     ref_basename=os.path.basename(ref)
     make_analysis_folder(cwd, 'selection')
