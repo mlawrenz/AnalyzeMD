@@ -67,7 +67,6 @@ cluster {2} mass epsilon {3} out {4}-cluster-d{3}_out averagelinkage gracecolor 
 
 
 def write_hbond_ptraj(trjfile, mask1, mask2, outname):
-#hbond H1 donormask :1-64.O= acceptormask :1-64.O= nointramol solventdonor :WAT solventacceptor :WAT.O o ut numhb.dat avgout avghb.dat solvout avgsolvent.dat bridgeout bridge.dat 
     ohandle=open('ptraj-hbonds.in', 'w')
     ohandle.write('''
 trajin {0}
@@ -76,7 +75,38 @@ hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-a
 '''.format(trjfile, mask1, mask2, outname))
     return
 
+def parse_hbond(amber_mask, reverse_dict):
+    num=amber_mask.split('@')[0].split('_')[1]
+    name=amber_mask.split('@')[0].split('_')[0]
+    # mapper values are amber
+    if num not in reverse_dict.keys():
+        # probably doing a solvent hbond
+        chain='water'
+        orig_num=num
+    else:
+        chain=reverse_dict[num][0]
+        orig_num=reverse_dict[num][1]
+    atom=amber_mask.split('@')[1].split('-')[0]
+    return chain, name, orig_num, atom
 
+
+def write_solvent_ptraj_file(ref, trjfile, mask, outname, occupancy):
+#hbond H1 donormask :1-64.O= acceptormask :1-64.O= nointramol solventdonor :WAT solventacceptor :WAT.O o ut numhb.dat avgout avghb.dat solvout avgsolvent.dat bridgeout bridge.dat 
+#radial rad.dat 0.1 10.0 :T3P@O :346
+#radial rad2.dat 0.1 10.0 :T3P@H1 :346 
+#radial rad3.dat 0.1 10.0 :T3P@H2 :346 
+    ohandle=open('ptraj-water.in', 'w')
+    ohandle.write('''
+trajin {0}
+reference {1}
+# Create average of solute to view with grid.
+center {2}
+rms reference @C,CA,O,N
+grid {3}_water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb {3}_water{4}.pdb max {4}
+hbond H1 donormask {2}@N*,O* acceptormask :T3P&@N*,O* nointramol out numhb-ligand-donor.dat  avgout avghb-ligand-donor.dat series 
+hbond H2 acceptormask {2}&@N*,O* donormask :T3P&@N*,O* nointramol out numhb-ligand-accept.dat avgout avghb-ligand-accept.dat series 
+'''.format(trjfile, ref, mask, outname, occupancy))
+    return
 
 
 def write_load_bfactor_pml(datatype, ref_basename, maxval):
@@ -137,11 +167,16 @@ def parse_ambmask(residue_mapper, selection):
     return total_residues_list, new_residues_list
 
 def map_residues(ref):
+    exclude=['T3P', 'NA ', 'Cl ']
     residue_mapper=dict()
     pdbfile=open(ref)
     amber_resnum=1
     prev_resnum=0
     for line in pdbfile.readlines():
+        if line.split()[3] in exclude:
+            break
+        if 'pseu' in line:
+            break
         if line.split()[0]=='ATOM' or line.split()[0]=='HETATM':
             resnum = str(line[23:26].strip())
             chain = str(line[20:22].strip())
@@ -239,18 +274,9 @@ def parse_all_hbonds_to_pml(files, outname, residue_mapper, ref):
             angle=line.split()[6]
             if fraction < 0.05:
                 continue
-            res1_num=acceptor.split('@')[0].split('_')[1]
-            res1_name=acceptor.split('@')[0].split('_')[0]
-            # mapper values are amber
-            res1_chain=reverse_dict[res1_num][0]
-            orig_res1_num=reverse_dict[res1_num][1]
-            atom1=acceptor.split('@')[1].split('-')[0]
-            res2_num=donor.split('@')[0].split('_')[1]   
-            res2_chain=reverse_dict[res2_num][0]
-            orig_res2_num=reverse_dict[res2_num][1]
-            res2_name=donor.split('@')[0].split('_')[0]
-            atom2=donor.split('@')[1].split('-')[0]
-            hbond='%s%s@%s-%s%s@%s' % (res1_name,orig_res1_num,atom1,res2_name, orig_res2_num,atom2)
+            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict)
+            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor, reverse_dict)
+            hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
             print hbond, percent
             ohandle.write('%s\t%s\n' % (hbond, percent))
             pymol_accept='%s/%s/%s' % (res1_chain, orig_res1_num, atom1)
@@ -317,6 +343,46 @@ bfactor-%s-%s           # PDB file with B factors filled with specified datatype
     read_handle.close()
     return
 
+def sovlent_calc(cwd, outname, ref, trjfile, selection, occupancy=0.8):
+    ref=os.path.abspath(ref)
+    ref_basename=os.path.basename(ref)
+    trjfile=os.path.abspath(trjfile)
+    residue_mapper=map_residues(ref)
+    reverse_dict = {value: keypath for keypath, value in keypaths(residue_mapper)}
+    #make sure have absolute path since working in analysis folder now
+    make_analysis_folder(cwd, 'solvent')
+    # test that the residues you cluster on are the right ones
+    new_ambmask=check_cluster_pdbfile(ref, selection, outname)
+    write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
+    command='%s/bin/cpptraj %s ptraj-water.in' %  (os.environ['AMBERHOME'], ref)
+    output, err=run_linux_process(command)
+    if 'rror' in err:
+        numpy.savetxt('ptraj-cluster.err', err.split('\n'), fmt='%s')
+        print "ERROR IN CPPTRAJ RMSD CALCULATION"
+        print "CHECK ptraj-cluster.err"
+        print err
+        sys.exit()
+    for file in glob.glob('avghb-*.dat'):
+        fhandle=open(file)
+    count=0
+    num=0
+    total_fraction=0
+    for line in fhandle.readlines():
+        if '#' in line:
+            pass
+        else:
+            fraction=float(line.split()[4])
+            acceptor=line.split()[0]
+            donor1=line.split()[1]
+            donor2=line.split()[2]
+            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict)
+            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor1, reverse_dict)
+            if fraction*100 < 1:
+                break
+            hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
+            percent=fraction*100
+            print hbond, 'persists for %0.2f %% of simulation' % percent
+    return
 
 def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
     ref=os.path.abspath(ref)
@@ -403,6 +469,9 @@ def selection_checker(cwd, reffile, selection):
 
 
 def main(args):
+    if args.debug==True:
+        import pdb
+        pdb.set_trace()
     try: 
         os.environ['AMBERHOME']
     except KeyError:
@@ -433,6 +502,8 @@ def main(args):
         clustering(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.distance)
     if args.analysis=='hbonds':
         hbonds(cwd, args.outname, args.reffile, args.trjfile, args.selection)
+    if args.analysis=='solvent_calc':    
+        sovlent_calc(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.occupancy)
     print "done with analysis"
     
 
@@ -455,8 +526,12 @@ $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o
     parser.add_argument('-r', '--reffile', dest='reffile',
                       help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY', required=True)
     parser.add_argument('-t', '--trjfile', dest='trjfile', help='DCD trj for trajectory analysis')
+    parser.add_argument('--debug', dest='debug', action="store_true")
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
     mask_parser=argparse.ArgumentParser(add_help=False)
+    outname_parser=argparse.ArgumentParser(add_help=False)
+    outname_parser.add_argument('--outname', dest='outname', default='protein',
+                      help='name for hbonds output, please do not use dashes or weird characters')
     mask_parser.add_argument('--selection', nargs='*', dest='selection', help='''Residues to use for analysis, with separated by
 commas and dashes and chains specified at the end with a period. If you do not
 provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
@@ -487,7 +562,12 @@ defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 "weak" as >=1 and < 10 and yellow.''')
     h_parser.add_argument('-o', '--outname', dest='outname', default='set',
                       help='name for hbonds output, please do not use dashes or weird characters')
-
+    c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, outname_parser], help='''
+Analyze water occupancy over trajectory and compute solvent hbonds to a provided
+mask. Will output a PDB file with water density at a %% of the max density.
+Default this is 0.8. Also will report significant solvent hbonds.''')
+    c_parser.add_argument('-o', '--occupancy', dest='occupancy', default=0.8,
+                      help='Occupancy >=X%% of the max density name used to output PDB file with these waters.')
     args = parser.parse_args()
     return args
 
@@ -495,6 +575,7 @@ defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 if __name__ == "__main__":
     args = parse_commandline()
     main(args)
+
 
 
 

@@ -1,0 +1,12 @@
+
+trajin aln-wrap-desmond_fbw7_505C_2501_prop_restrain.dcd
+reference aln-wrap-desmond_fbw7_505C_2501_prop_restrain.pdb
+# Create average of solute to view with grid.
+#center :501
+rms reference @C,CA,O,N
+grid water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb water0.8.pdb max 0.8
+radial rad.dat 0.1 10.0 :T3P@O :346
+radial rad2.dat 0.1 10.0 :T3P@H1 :346 
+radial rad3.dat 0.1 10.0 :T3P@H2 :346 
+hbond H1 donormask :346@N*,O* acceptormask :T3P&@N*,O* nointramol out numhb-ligand-donor.dat  avgout avghb-ligand-donor.dat series 
+hbond H2 acceptormask :346&@N*,O* donormask :T3P&@N*,O* nointramol out numhb-ligand-accept.dat avgout avghb-ligand-accept.dat series 
