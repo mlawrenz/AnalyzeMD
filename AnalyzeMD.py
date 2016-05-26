@@ -1,14 +1,9 @@
-from schrodinger.trajectory.desmondsimulation import create_simulation
 import glob
 import shutil
 import numpy
 import sys
 from pdb_bfactor import *
 
-import schrodinger.trajectory.analysis as analysis
-from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
-from schrodinger.structutils.analyze import evaluate_asl
-from schrodinger.application.desmond.util import get_indices, parse_slice
 import os
 import subprocess
 from subprocess import PIPE
