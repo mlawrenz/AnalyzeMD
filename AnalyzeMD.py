@@ -171,12 +171,21 @@ def check_cluster_pdbfile(ref, selection, outname):
     output, err=run_linux_process(command)
     pdbfile=open('%s-cluster-check.pdb' % outname)
     amber_residues=[]
+    prev_resnum=0
     for line in pdbfile.readlines():
         if 'ANISOU' in line:
             print "PDB reference contains ANISOU lines, please remove these first"
             sys.exit()
-        if 'CA' in line:
-            amber_residues.append(''.join([line.split()[3], line.split()[5]]))
+        if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
+            resnum = int(line[23:26].strip())
+            if prev_resnum==0:
+                amber_residues.append(''.join([line.split()[3], line.split()[5]]))
+                prev_resnum=resnum
+            elif resnum!=prev_resnum:
+                prev_resnum=resnum
+                amber_residues.append(''.join([line.split()[3], line.split()[5]]))
+            else:
+                pass
     pdbfile.close()
     print "You asked for %s" % selection
     print "We converted to %s" % new_ambmask
