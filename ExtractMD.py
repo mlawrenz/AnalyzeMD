@@ -80,11 +80,10 @@ animate write pdb aln-wrap-{0}.pdb sel $all beg 0 end 1
 exit'''.format(basename))
     return
 
-def extract_traj_with_water(cmsfile, trjfile, asl_expr, step=1):
+def extract_traj_with_water(cwd, cmsfile, trjfile, asl_expr, step=1):
     cmsfile=os.path.abspath(cmsfile)
     trjfile=os.path.abspath(trjfile)
-    import pdb
-    pdb.set_trace()
+    basename=os.path.basename(trjfile).split('_trj')[0]
     if asl_expr != 'protein':
         st = StructureReader(cmsfile).next()
         asl_searcher = AslLigandSearcher()
@@ -106,6 +105,10 @@ def extract_traj_with_water(cmsfile, trjfile, asl_expr, step=1):
         print "CHECK vmd.err"
         print err
         sys.exit()
+    if not os.path.exists('%s/analysis' % cwd):
+        os.mkdir('%s/analysis' % cwd)
+    shutil.move('aln-wrap-%s.dcd' % basename,  '%s/analysis' % cwd)
+    shutil.move('aln-wrap-%s.pdb' % basename,  '%s/analysis' % cwd)
     return
 
 def extract_frames_from_trajectory(options):
@@ -173,7 +176,7 @@ def main(options):
             print "VMD_DIR environment variable is not set"
             print "On AWS this is /home/mlawrenz/VMD1.9.2/bin/"
             sys.exit()
-        extract_traj_with_water(options.cmsfile, options.trjfile, options.asl, step=1)
+        extract_traj_with_water(cwd, options.cmsfile, options.trjfile, options.asl, step=1)
     else:
         tmp_folder, basename=extract_frames_from_trajectory(options)
         print "Converting to solvent-free DCD trajectory"
