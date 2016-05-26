@@ -1,4 +1,5 @@
 import glob
+import collections
 import shutil
 import numpy
 import sys
@@ -70,8 +71,8 @@ def write_hbond_ptraj(trjfile, mask1, mask2, outname):
     ohandle=open('ptraj-hbonds.in', 'w')
     ohandle.write('''
 trajin {0}
-hbond H1 donormask :{1}@N*,O* acceptormask :{2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series 
-hbond H2 acceptormask :{1}&@N*,O* donormask :{2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series 
+hbond H1 donormask {1}@N*,O* acceptormask {2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series 
+hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series 
 '''.format(trjfile, mask1, mask2, outname))
     return
 
@@ -188,7 +189,7 @@ def check_cluster_pdbfile(ref, selection, outname):
                 pass
     pdbfile.close()
     print "You asked for %s" % selection
-    print "We converted to %s" % new_ambmask
+    #print "We converted to %s" % new_ambmask
     print "You are getting:"
     print amber_residues
     return new_ambmask
@@ -202,7 +203,18 @@ def percent_score(percent):
         color='yellow'
     return color
 
-def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
+
+def keypaths(nested):
+    for key, value in nested.iteritems():
+        if isinstance(value, collections.Mapping):
+            for subkey, subvalue in keypaths(value):
+                yield [key] + subkey, subvalue
+        else:
+            yield [key], value
+
+
+
+def parse_all_hbonds_to_pml(files, outname, residue_mapper, ref):
     format_data=dict()
     all_hbonds=[]
     pymol_handle=open('%s_hbonds.pml' % outname, 'w')
@@ -211,6 +223,8 @@ def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
     pymol_handle.write('show cartoon, protein\n')
     pymol_handle.write('hide lines, protein\n')
     ohandle=open('%s_all_hbonds.dat' % outname, 'w')
+    # need a damn reverse dict for this
+    reverse_dict = {value: keypath for keypath, value in keypaths(residue_mapper)}
     for file in files:
         print "-----%s----" % file
         fhandle=open(file)
@@ -225,16 +239,16 @@ def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
             angle=line.split()[6]
             if fraction < 0.05:
                 continue
-            res1_num=int(acceptor.split('@')[0].split('_')[1])   
+            res1_num=acceptor.split('@')[0].split('_')[1]
             res1_name=acceptor.split('@')[0].split('_')[0]
-            # mapper keys are amber numbers
-            orig_res1_num=residue_mapper[int(res1_num)]
-            res1_chain=str(chain_mapper[int(res1_num)])
+            # mapper values are amber
+            res1_chain=reverse_dict[res1_num][0]
+            orig_res1_num=reverse_dict[res1_num][1]
             atom1=acceptor.split('@')[1].split('-')[0]
-            res2_num=int(donor.split('@')[0].split('_')[1])   
+            res2_num=donor.split('@')[0].split('_')[1]   
+            res2_chain=reverse_dict[res2_num][0]
+            orig_res2_num=reverse_dict[res2_num][1]
             res2_name=donor.split('@')[0].split('_')[0]
-            orig_res2_num=residue_mapper[int(res2_num)]
-            res2_chain=str(chain_mapper[int(res2_num)])
             atom2=donor.split('@')[1].split('-')[0]
             hbond='%s%s@%s-%s%s@%s' % (res1_name,orig_res1_num,atom1,res2_name, orig_res2_num,atom2)
             print hbond, percent
@@ -253,6 +267,9 @@ def parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref):
             if hcolor=='yellow':
                 pymol_handle.write('dist %s_weak_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
                 pymol_handle.write('color %s, %s_weak_hbonds\n' % (hcolor, outname))
+    pymol_handle.write('hide labels, ligand_weak_hbonds\n')
+    pymol_handle.write('hide labels, ligand_medium_hbonds\n')
+    pymol_handle.write('hide labels, ligand_strong_hbonds\n')
     pymol_handle.close()
     ohandle.close()
     return 
@@ -347,13 +364,19 @@ def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
         os.remove(file)
     return
 
-def hbonds(cwd, outname, ref, trjfile, mask1, mask2):
+def hbonds(cwd, outname, ref, trjfile, selection):
+    if len(selection) != 2:
+        print "HBOND REQUIRES 2 INPUT GROUPS"
+        sys.exit()
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
     make_analysis_folder(cwd, 'hbonds')
     #make sure have absolute path since working in analysis folder now
-    write_hbond_ptraj(trjfile, mask1, mask2, outname)
+    residue_mapper=map_residues(ref)
+    new_ambmask1=check_cluster_pdbfile(ref, [selection[0],], outname)
+    new_ambmask2=check_cluster_pdbfile(ref, [selection[1],], outname)
+    write_hbond_ptraj(trjfile, new_ambmask1, new_ambmask2, outname)
     command='%s/bin/cpptraj %s ptraj-hbonds.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     numpy.savetxt('ptraj-hbonds.out', output.split('\n'), fmt='%s')
@@ -364,8 +387,7 @@ def hbonds(cwd, outname, ref, trjfile, mask1, mask2):
         print err
         sys.exit()
     files=glob.glob('avghb-%s-*.dat' % outname)
-    chain_mapper, residue_mapper, tmp=map_residues(ref, ':1')
-    parse_all_hbonds(files, outname, residue_mapper, chain_mapper, ref)
+    parse_all_hbonds_to_pml(files, outname, residue_mapper,  ref)
     print "wrote %s_hbonds.pml" % outname
     return
 
@@ -410,7 +432,7 @@ def main(args):
         print "Running clustering analysis" 
         clustering(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.distance)
     if args.analysis=='hbonds':
-        hbonds(cwd, args.outname, args.reffile, args.trjfile, args.mask1, args.mask2)
+        hbonds(cwd, args.outname, args.reffile, args.trjfile, args.selection)
     print "done with analysis"
     
 
@@ -458,11 +480,13 @@ specified by the distance argument.''')
                       help='clustering RMSD cutoff to define clusters. recommend 2 for most small changes.')
     c_parser.add_argument('-o', '--outname', dest='outname', default='set',
                       help='name for clustering output, will precede a name NAME-cluster-*')
-    h_parser=subparsers.add_parser("hbonds", help=''' Compute hydrogen bonds between two groups of residues (can be all to all with same selection''')
+    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser], help='''
+Compute hydrogen bonds between two groups of residues specified with --selection
+(can be all to all with same selection. Output is pml file with "strong" hbonds
+defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
+"weak" as >=1 and < 10 and yellow.''')
     h_parser.add_argument('-o', '--outname', dest='outname', default='set',
                       help='name for hbonds output, please do not use dashes or weird characters')
-    h_parser.add_argument('--group1', dest='mask1', help='group1 of residues')
-    h_parser.add_argument('--group2', dest='mask2', help='group2 of residues')
 
     args = parser.parse_args()
     return args
