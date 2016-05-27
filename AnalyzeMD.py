@@ -219,7 +219,7 @@ def main(args):
         os.environ['AMBERHOME']
     except KeyError:
         print "AMBERHOME environment variable is not set"
-        print "On AWS this is /home/mlawrenz/VMD1.9.2/bin/"
+        print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
     cwd=os.getcwd()
     if args.reffile is None:
