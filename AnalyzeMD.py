@@ -1,4 +1,5 @@
 import glob
+import external_file_io
 import collections
 import shutil
 import numpy
@@ -32,49 +33,6 @@ def run_linux_process(command):
     output, err=p.communicate()
     return output, err
 
-def write_rmsd_ptraj_file(ref, trjfile):
-    ohandle=open('ptraj-rmsd.in', 'w')
-    ohandle.write('''
-trajin {0}
-reference {1}
-# must align by bb first
-rmsd bb @CA reference out rmsd-aggregate-bb.dat perres perresout rmsd-bb-perresout.dat perresavg rmsd-bb-perresavg.dat
-rmsd all !@H* reference out rmsd-aggregate-all.dat perres perresout rmsd-all-perresout.dat perresavg rmsd-all-perresavg.dat
-atomicfluct out rmsf-all-perresavg.dat !@H* byres
-atomicfluct out rmsf-bb-perresavg.dat @CA byres
-'''.format(trjfile, ref))
-    return
-
-
-def write_strip_ptraj_file(ref, ambmask, outname):
-    ohandle=open('ptraj-strip.in', 'w')
-    ohandle.write('''
-trajin  {0}
-strip !{1}
-trajout {2}-cluster-check.pdb'''.format(ref, ambmask, outname))
-    return
-    
-
-def write_clustering_ptraj_file(ref, trjfile, ambmask, d, outname):
-    ohandle=open('ptraj-cluster.in', 'w')
-    ohandle.write('''
-trajin  {1}
-reference {0}
-rms reference out rmsd-ca.dat @CA
-cluster {2} mass epsilon {3} out {4}-cluster-d{3}_out averagelinkage gracecolor summary {4}-cluster-d{3}-summary_out info {4}-cluster-d{3}-Cluster_info repout {4}-cluster-d{3}-centroid repfmt pdb
-'''.format(ref, trjfile, ambmask, d, outname))
-    return
-
-
-def write_hbond_ptraj(trjfile, mask1, mask2, outname):
-    ohandle=open('ptraj-hbonds.in', 'w')
-    ohandle.write('''
-trajin {0}
-hbond H1 donormask {1}@N*,O* acceptormask {2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series 
-hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series 
-'''.format(trjfile, mask1, mask2, outname))
-    return
-
 def parse_hbond(amber_mask, reverse_dict, accept=False):
     if 'Solvent' in amber_mask:
         chain='water'
@@ -91,53 +49,6 @@ def parse_hbond(amber_mask, reverse_dict, accept=False):
         atom=amber_mask.split('@')[1].split('-')[0]
     return chain, name, orig_num, atom
 
-
-def write_solvent_ptraj_file(ref, trjfile, mask, outname, occupancy):
-#radial rad.dat 0.1 10.0 :T3P@O :346
-#radial rad2.dat 0.1 10.0 :T3P@H1 :346 
-#radial rad3.dat 0.1 10.0 :T3P@H2 :346 
-    ohandle=open('ptraj-water.in', 'w')
-    ohandle.write('''
-trajin {0}
-reference {1}
-# Create average of solute to view with grid.
-#center {2}
-rms reference @C,CA,O,N
-grid {3}_water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb {3}_water{4}.pdb max {4}'''.format(trjfile, ref, mask, outname, occupancy))
-    if mask!=None:
-        ohandle.write('''
-hbond H1 out {0}_hbond.dat {1}@N*,O* series avgout avgout.dat  printatomnum nointramol solventdonor :T3P@O  solventacceptor :T3P@O  solvout {0}_solvout.dat bridgeout {0}_bridgeout.dat 
-run
-runanalysis lifetime H1[solventhb] out {0}_lifetime.dat
-'''.format(outname, mask))
-    return
-
-
-def write_load_bfactor_pml(datatype, ref_basename, maxval):
-    maxval=int(numpy.ceil(maxval))
-    ohandle=open('load_bfactor.pml', 'w')
-    ohandle.write('''
-load bfactor-%s-%s
-spectrum b, blue_white_red, minimum=0, maximum=%s
-show cartoon
-hide lines
-hide (h. and (e. c extend 1))
-''' % (datatype, ref_basename, maxval))
-    return
-
-def make_analysis_folder(cwd, name):
-    if not os.path.exists('%s/%s-analysis' % (cwd, name)):
-        os.mkdir('%s/%s-analysis' % (cwd, name))
-    os.chdir('%s/%s-analysis' % (cwd, name))
-    return
-
-def catch_output_and_errors(output, error, name):
-    ohandle=open('%s.err' % name, 'w')
-    for l in output:
-        ohandle.write('%s\n' % l)
-    ohandle.close()
-    
-    numpy.savetxt('ptraj-rmsd.err', err, fmt='%s')
 
 def parse_ambmask(residue_mapper, selection):
     total_residues_list=[]
@@ -205,8 +116,7 @@ def check_cluster_pdbfile(ref, selection, outname):
     total_residue_list, new_residue_list=parse_ambmask(residue_mapper, selection)
     new_ambmask=','.join([str(i) for i in new_residue_list])
     new_ambmask=':%s' % new_ambmask
-    write_strip_ptraj_file(ref, new_ambmask, outname)
-    #write_strip_ptraj_file(ref, ambmask, outname)
+    external_file_io.write_strip_ptraj_file(ref, new_ambmask, outname)
     command='%s/bin/cpptraj %s ptraj-strip.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     pdbfile=open('%s-cluster-check.pdb' % outname)
@@ -253,65 +163,13 @@ def keypaths(nested):
 
 
 
-def parse_all_hbonds_to_pml(files, outname, residue_mapper, ref):
-    format_data=dict()
-    all_hbonds=[]
-    pymol_handle=open('%s_hbonds.pml' % outname, 'w')
-    pymol_handle.write('load %s\n' % ref)
-    pymol_handle.write('sel protein, polymer\n')
-    pymol_handle.write('show cartoon, protein\n')
-    pymol_handle.write('hide lines, protein\n')
-    ohandle=open('%s_all_hbonds.dat' % outname, 'w')
-    # need a damn reverse dict for this
-    reverse_dict = {value: keypath for keypath, value in keypaths(residue_mapper)}
-    for file in files:
-        print "-----%s----" % file
-        fhandle=open(file)
-        for line in fhandle.readlines():
-            if '#' in line:
-                continue
-            acceptor=line.split()[0] 
-            donor=line.split()[1] 
-            fraction=line.split()[4]
-            percent=float(fraction)*100
-            distance=line.split()[5]
-            angle=line.split()[6]
-            if fraction < 0.05:
-                continue
-            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict)
-            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor, reverse_dict)
-            hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
-            print hbond, percent
-            ohandle.write('%s\t%s\n' % (hbond, percent))
-            pymol_accept='%s/%s/%s' % (res1_chain, orig_res1_num, atom1)
-            pymol_donor='%s/%s/%s' % (res2_chain, orig_res2_num, atom2)
-            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res1_chain, orig_res1_num))
-            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res2_chain, orig_res2_num))
-            hcolor=percent_score(percent)
-            if hcolor=='red':
-                pymol_handle.write('dist %s_strong_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
-                pymol_handle.write('color %s, %s_strong_hbonds\n' % (hcolor, outname))
-            if hcolor=='pink':
-                pymol_handle.write('dist %s_medium_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
-                pymol_handle.write('color %s, %s_medium_hbonds\n' % (hcolor, outname))
-            if hcolor=='yellow':
-                pymol_handle.write('dist %s_weak_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
-                pymol_handle.write('color %s, %s_weak_hbonds\n' % (hcolor, outname))
-    pymol_handle.write('hide labels, ligand_weak_hbonds\n')
-    pymol_handle.write('hide labels, ligand_medium_hbonds\n')
-    pymol_handle.write('hide labels, ligand_strong_hbonds\n')
-    pymol_handle.close()
-    ohandle.close()
-    return 
-
-
 def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
     #make sure have absolute path since working in analysis folder now
     make_analysis_folder(cwd, 'rmsd')
-    write_rmsd_ptraj_file(ref, trjfile)
+    external_file_io.write_rmsd_ptraj_file(ref, trjfile)
     command='%s/bin/cpptraj %s ptraj-rmsd.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     numpy.savetxt('ptraj-rmsd.out', output.split('\n'), fmt='%s')
@@ -335,7 +193,7 @@ def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
     for line in out:
         outfile.write(line)
     outfile.close()
-    write_load_bfactor_pml(datatype, ref_basename, maxval)
+    external_file_io.write_load_bfactor_pml(datatype, ref_basename, maxval)
     read_handle=open('README', 'w')
     read_handle.write('''
 rmsd-aggregate-all.dat  # RMSD of all atoms in selection for each time point
@@ -347,7 +205,7 @@ bfactor-%s-%s           # PDB file with B factors filled with specified datatype
     read_handle.close()
     return
 
-def sovlent_calc(cwd, outname, ref, trjfile, selection=None, radius=None, occupancy=0.8):
+def sovlent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
@@ -358,9 +216,9 @@ def sovlent_calc(cwd, outname, ref, trjfile, selection=None, radius=None, occupa
     # test that the residues you cluster on are the right ones
     if selection!=None:
         new_ambmask=check_cluster_pdbfile(ref, selection, outname)
-        write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
+        external_file_io.write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
     else:
-        write_solvent_ptraj_file(ref, trjfile, selection, outname, occupancy)
+        external_file_io.write_solvent_ptraj_file(ref, trjfile, selection, outname, occupancy)
     command='%s/bin/cpptraj %s ptraj-water.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     if 'rror' in err:
@@ -407,7 +265,7 @@ def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
     
     # test that the residues you cluster on are the right ones
     new_ambmask=check_cluster_pdbfile(ref, cluster, outname)
-    write_clustering_ptraj_file(ref, trjfile, new_ambmask, d, outname)
+    external_file_io.write_clustering_ptraj_file(ref, trjfile, new_ambmask, d, outname)
     command='%s/bin/cpptraj %s ptraj-cluster.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     numpy.savetxt('ptraj-cluster.out', output.split('\n'), fmt='%s')
@@ -450,7 +308,7 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     residue_mapper=map_residues(ref)
     new_ambmask1=check_cluster_pdbfile(ref, [selection[0],], outname)
     new_ambmask2=check_cluster_pdbfile(ref, [selection[1],], outname)
-    write_hbond_ptraj(trjfile, new_ambmask1, new_ambmask2, outname)
+    external_file_io.write_hbond_ptraj(trjfile, new_ambmask1, new_ambmask2, outname)
     command='%s/bin/cpptraj %s ptraj-hbonds.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     numpy.savetxt('ptraj-hbonds.out', output.split('\n'), fmt='%s')
@@ -461,7 +319,7 @@ def hbonds(cwd, outname, ref, trjfile, selection):
         print err
         sys.exit()
     files=glob.glob('avghb-%s-*.dat' % outname)
-    parse_all_hbonds_to_pml(files, outname, residue_mapper,  ref)
+    external_file_io.write_all_hbonds_to_pml(files, outname, residue_mapper,  ref)
     print "wrote %s_hbonds.pml" % outname
     return
 
