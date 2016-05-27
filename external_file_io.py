@@ -15,6 +15,16 @@ import argparse
 FILE IO utilities
 """
 
+def write_ptraj_align_file(ref, trjfile):
+    ohandle=open('ptraj-align.in', 'w')
+    ohandle.write('''
+trajin {0}
+reference {1}
+rms reference out rmsd-ca.dat @CA,C,N,O
+trajout aln-{0}'''.format(trjfile, ref))
+    return
+
+
 def write_rmsd_ptraj_file(ref, trjfile):
     ohandle=open('ptraj-rmsd.in', 'w')
     ohandle.write('''

@@ -1,4 +1,7 @@
 from schrodinger.trajectory.desmondsimulation import create_simulation
+import numpy
+import external_file_io
+import shlex
 import shutil
 import subprocess
 from subprocess import PIPE
@@ -41,6 +44,8 @@ def _parse_frames(frames_str):
 
 
 def run_linux_process(command):
+    #command=command.replace("//", "/")
+    #command_list=shlex.split(command)
     p=subprocess.Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
     p.wait()
     output, err=p.communicate()
@@ -58,8 +63,7 @@ pbc set $cell'''.format(cmsfile, trjfile, step))
     if ligand!=False: 
         ohandle.write('''
 set solute [ atomselect top "protein or resname {0}" ]')
-pbc wrap -centersel "resname {0}" -center com -compound residue
--all'''.format(ligand))
+pbc wrap -centersel "resname {0}" -center com -compound residue -all'''.format(ligand))
     else:
         ohandle.write('''
 set solute [ atomselect top "protein" ]'
@@ -96,22 +100,31 @@ def extract_traj_with_water(cwd, cmsfile, trjfile, asl_expr, step=1):
     else:
         write_vmd_script(cmsfile, trjfile, step)
     command='%s/vmd -dispdev text -e wrap.tcl' % (os.environ['VMD_DIR'])
+    # AGAIN, POpen is not working!
+    #os.system(command)
     output, err=run_linux_process(command)
-    #print output.split('\n')
     if 'rror' in output:
         numpy.savetxt('vmd.err', output.split('\n'), fmt='%s')
         print "ERROR IN VMD"
         print "CHECK vmd.err"
+<<<<<<< HEAD
         sys.exit()
     if 'not found' in output:
         numpy.savetxt('vmd.err', err.split('\n'), fmt='%s')
         print "ERROR IN VMD"
         print "CHECK vmd.err"
+=======
+        print output.split('\n')
+        sys.exit()
+    if not os.path.exists('aln-wrap-%s.dcd' % basename):
+        print "DID NOT WRITE DCD FILE"
+>>>>>>> 36045655a218c76d265e7aedfdb0b1080e28e179
         sys.exit()
     if not os.path.exists('%s/analysis' % cwd):
         os.mkdir('%s/analysis' % cwd)
     shutil.move('aln-wrap-%s.dcd' % basename,  '%s/analysis' % cwd)
     shutil.move('aln-wrap-%s.pdb' % basename,  '%s/analysis' % cwd)
+    print "trajectories are in analysis/ directory"
     return
 
 def extract_frames_from_trajectory(options):
@@ -139,6 +152,7 @@ def extract_frames_from_trajectory(options):
         filename = "%s/%s_%05d.%s"%(tmp_folder, basename, i, 'pdb')
         extract_func(csim, i, filename, asl = asl_expr )
     print "wrote %s pdbfiles" % i
+    print "trajectories are in analysis/ directory"
     return tmp_folder, basename
 
 
@@ -149,14 +163,6 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
     command='{0} -o {1}/analysis/{2}.dcd -otype dcd -s {3}/{2}_00000.pdb -pdb `ls -v {3}/{2}*pdb`'.format(program, cwd, basename, tmp_folder)
     # RUNNING THIS WAY BC CATCHING OUTPUT DID NOT WORK FOR SOME REASON
     os.system(command)
-    #output, err=run_linux_process(command)
-    #print output.split('\n')
-    #if 'rror' in err:
-    #    numpy.savetxt('catdcd.err', err.split('\n'), fmt='%s')
-    #    print "ERROR IN CATDCD"
-    #    print "CHECK catdcd.err"
-    #    print err
-    #    sys.exit()
     command='cp {0}/{1}_00000.pdb {2}/analysis/{1}_reference.pdb'.format(tmp_folder, basename, cwd)
     output, err=run_linux_process(command)
     if 'rror' in err:
@@ -170,6 +176,13 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
 
 def main(options):
     cwd=os.getcwd()
+    try:
+        os.environ['AMBERHOME']
+    except KeyError:
+        print "AMBERHOME environment variable is not set"
+        print "On AWS this is /home/mlawrenz/amber14/"
+        sys.exit()
+
     if options.debug==True:
         import pdb
         pdb.set_trace()
@@ -184,9 +197,21 @@ def main(options):
             sys.exit()
         extract_traj_with_water(cwd, options.cmsfile, options.trjfile, options.asl, step=1)
     else:
+        print "This may take up to tens of minutes"
         tmp_folder, basename=extract_frames_from_trajectory(options)
         print "Converting to solvent-free DCD trajectory"
         convert_desmond_to_dcd(cwd, tmp_folder, basename)
+        os.chdir('%s/analysis' % cwd)
+        external_file_io.write_ptraj_align_file('%s_reference.pdb' % basename ,'%s.dcd' % basename)
+        command='%s/bin/cpptraj %s ptraj-align.in' %  (os.environ['AMBERHOME'], '%s_reference.pdb' % basename)
+        output, err=run_linux_process(command)
+        if 'rror' in err:
+            numpy.savetxt('ptraj-align.err', err.split('\n'), fmt='%s')
+            print "ERROR IN CPPTRAJ ALIGN CALCULATION"
+            print "CHECK ptraj-align.err"
+            print err
+            sys.exit()
+        os.remove('%s.dcd' % basename)
         print "Cleaning up"
         shutil.rmtree(tmp_folder)
     return
