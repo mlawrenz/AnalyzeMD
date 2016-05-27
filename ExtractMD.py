@@ -107,18 +107,10 @@ def extract_traj_with_water(cwd, cmsfile, trjfile, asl_expr, step=1):
         numpy.savetxt('vmd.err', output.split('\n'), fmt='%s')
         print "ERROR IN VMD"
         print "CHECK vmd.err"
-<<<<<<< HEAD
-        sys.exit()
-    if 'not found' in output:
-        numpy.savetxt('vmd.err', err.split('\n'), fmt='%s')
-        print "ERROR IN VMD"
-        print "CHECK vmd.err"
-=======
         print output.split('\n')
         sys.exit()
     if not os.path.exists('aln-wrap-%s.dcd' % basename):
         print "DID NOT WRITE DCD FILE"
->>>>>>> 36045655a218c76d265e7aedfdb0b1080e28e179
         sys.exit()
     if not os.path.exists('%s/analysis' % cwd):
         os.mkdir('%s/analysis' % cwd)
