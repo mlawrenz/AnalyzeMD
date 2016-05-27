@@ -165,8 +165,6 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
 
 
 def main(options):
-    import pdb
-    pdb.set_trace()
     cwd=os.getcwd()
     if options.solvent==True:
         print "Extracting wrapped DCD trajectory with solvent"
