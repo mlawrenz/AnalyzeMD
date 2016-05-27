@@ -166,7 +166,7 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
 
 def main(options):
     cwd=os.getcwd()
-    if args.debug==True:
+    if options.debug==True:
         import pdb
         pdb.set_trace()
     if options.solvent==True:
@@ -199,7 +199,7 @@ def parse_commandline():
                   action="store", dest="asl", default='protein',
                   help="asl to specify what part of structure to be extracted, provide name of ligand if extracting solvent")
     parser.add_option('--solvent', action="store_true")
-    parser.add_argument('--debug', dest='debug', action="store_true")
+    parser.add_option('--debug', dest='debug', action="store_true")
     (options, args) = parser.parse_args()
     return (options, args)
 
