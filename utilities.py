@@ -15,6 +15,14 @@ import argparse
 Utility functions
 """
 
+
+def run_linux_process(command):
+    p=subprocess.Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+    p.wait()
+    output, err=p.communicate()
+    return output, err
+
+
 def parse_hbond(amber_mask, reverse_dict, accept=False):
     if 'Solvent' in amber_mask:
         chain='water'
