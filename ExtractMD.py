@@ -102,7 +102,11 @@ def extract_traj_with_water(cwd, cmsfile, trjfile, asl_expr, step=1):
         numpy.savetxt('vmd.err', output.split('\n'), fmt='%s')
         print "ERROR IN VMD"
         print "CHECK vmd.err"
-        print err
+        sys.exit()
+    if 'not found' in output:
+        numpy.savetxt('vmd.err', err.split('\n'), fmt='%s')
+        print "ERROR IN VMD"
+        print "CHECK vmd.err"
         sys.exit()
     if not os.path.exists('%s/analysis' % cwd):
         os.mkdir('%s/analysis' % cwd)
