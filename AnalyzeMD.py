@@ -75,23 +75,24 @@ hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-a
 '''.format(trjfile, mask1, mask2, outname))
     return
 
-def parse_hbond(amber_mask, reverse_dict):
-    num=amber_mask.split('@')[0].split('_')[1]
-    name=amber_mask.split('@')[0].split('_')[0]
-    # mapper values are amber
-    if num not in reverse_dict.keys():
-        # probably doing a solvent hbond
+def parse_hbond(amber_mask, reverse_dict, accept=False):
+    if 'Solvent' in amber_mask:
         chain='water'
-        orig_num=num
+        orig_num=''
+        name=''
+        atom='H'
+        if accept==True:
+            atom='O'
     else:
+        num=amber_mask.split('@')[0].split('_')[1]
+        name=amber_mask.split('@')[0].split('_')[0]
         chain=reverse_dict[num][0]
         orig_num=reverse_dict[num][1]
-    atom=amber_mask.split('@')[1].split('-')[0]
+        atom=amber_mask.split('@')[1].split('-')[0]
     return chain, name, orig_num, atom
 
 
 def write_solvent_ptraj_file(ref, trjfile, mask, outname, occupancy):
-#hbond H1 donormask :1-64.O= acceptormask :1-64.O= nointramol solventdonor :WAT solventacceptor :WAT.O o ut numhb.dat avgout avghb.dat solvout avgsolvent.dat bridgeout bridge.dat 
 #radial rad.dat 0.1 10.0 :T3P@O :346
 #radial rad2.dat 0.1 10.0 :T3P@H1 :346 
 #radial rad3.dat 0.1 10.0 :T3P@H2 :346 
@@ -100,12 +101,15 @@ def write_solvent_ptraj_file(ref, trjfile, mask, outname, occupancy):
 trajin {0}
 reference {1}
 # Create average of solute to view with grid.
-center {2}
+#center {2}
 rms reference @C,CA,O,N
-grid {3}_water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb {3}_water{4}.pdb max {4}
-hbond H1 donormask {2}@N*,O* acceptormask :T3P&@N*,O* nointramol out numhb-ligand-donor.dat  avgout avghb-ligand-donor.dat series 
-hbond H2 acceptormask {2}&@N*,O* donormask :T3P&@N*,O* nointramol out numhb-ligand-accept.dat avgout avghb-ligand-accept.dat series 
-'''.format(trjfile, ref, mask, outname, occupancy))
+grid {3}_water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb {3}_water{4}.pdb max {4}'''.format(trjfile, ref, mask, outname, occupancy))
+    if mask!=None:
+        ohandle.write('''
+hbond H1 out {0}_hbond.dat {1}@N*,O* series avgout avgout.dat  printatomnum nointramol solventdonor :T3P@O  solventacceptor :T3P@O  solvout {0}_solvout.dat bridgeout {0}_bridgeout.dat 
+run
+runanalysis lifetime H1[solventhb] out {0}_lifetime.dat
+'''.format(outname, mask))
     return
 
 
@@ -343,7 +347,7 @@ bfactor-%s-%s           # PDB file with B factors filled with specified datatype
     read_handle.close()
     return
 
-def sovlent_calc(cwd, outname, ref, trjfile, selection, occupancy=0.8):
+def sovlent_calc(cwd, outname, ref, trjfile, selection=None, radius=None, occupancy=0.8):
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
@@ -352,36 +356,40 @@ def sovlent_calc(cwd, outname, ref, trjfile, selection, occupancy=0.8):
     #make sure have absolute path since working in analysis folder now
     make_analysis_folder(cwd, 'solvent')
     # test that the residues you cluster on are the right ones
-    new_ambmask=check_cluster_pdbfile(ref, selection, outname)
-    write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
+    if selection!=None:
+        new_ambmask=check_cluster_pdbfile(ref, selection, outname)
+        write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
+    else:
+        write_solvent_ptraj_file(ref, trjfile, selection, outname, occupancy)
     command='%s/bin/cpptraj %s ptraj-water.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     if 'rror' in err:
-        numpy.savetxt('ptraj-cluster.err', err.split('\n'), fmt='%s')
+        numpy.savetxt('ptraj-water.err', err.split('\n'), fmt='%s')
         print "ERROR IN CPPTRAJ RMSD CALCULATION"
-        print "CHECK ptraj-cluster.err"
+        print "CHECK ptraj-water.err"
         print err
         sys.exit()
-    for file in glob.glob('avghb-*.dat'):
+    print "PDB file with {1} occupancy are in {0}_water{1}.pdb".format(outname, occupancy)
+
+    if selection!=None:
+        file='%s_solvout.dat' % outname
         fhandle=open(file)
-    count=0
-    num=0
-    total_fraction=0
-    for line in fhandle.readlines():
-        if '#' in line:
-            pass
-        else:
-            fraction=float(line.split()[4])
-            acceptor=line.split()[0]
-            donor1=line.split()[1]
-            donor2=line.split()[2]
-            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict)
-            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor1, reverse_dict)
-            if fraction*100 < 1:
-                break
-            hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
-            percent=fraction*100
-            print hbond, 'persists for %0.2f %% of simulation' % percent
+        for line in fhandle.readlines():
+            if '#' in line:
+                pass
+            else:
+                fraction=float(line.split()[4])
+                acceptor=line.split()[0]
+                donor1=line.split()[1]
+                donor2=line.split()[2]
+                res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict, accept=True)
+                res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor1, reverse_dict)
+                if fraction*100 < 1:
+                    break
+                hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
+                percent=fraction*100
+                print hbond, 'persists for %0.2f %% of simulation' % percent
+        fhandle.close()
     return
 
 def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
