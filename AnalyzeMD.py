@@ -1,5 +1,6 @@
 import glob
 import external_file_io
+import utilities
 import collections
 import shutil
 import numpy
@@ -33,135 +34,11 @@ def run_linux_process(command):
     output, err=p.communicate()
     return output, err
 
-def parse_hbond(amber_mask, reverse_dict, accept=False):
-    if 'Solvent' in amber_mask:
-        chain='water'
-        orig_num=''
-        name=''
-        atom='H'
-        if accept==True:
-            atom='O'
-    else:
-        num=amber_mask.split('@')[0].split('_')[1]
-        name=amber_mask.split('@')[0].split('_')[0]
-        chain=reverse_dict[num][0]
-        orig_num=reverse_dict[num][1]
-        atom=amber_mask.split('@')[1].split('-')[0]
-    return chain, name, orig_num, atom
-
-
-def parse_ambmask(residue_mapper, selection):
-    total_residues_list=[]
-    new_residues_list=[]
-    for mask in selection:
-        chain=mask.split('.')[-1]
-        if '*' in mask:
-            if chain=='*':
-                for chain in residue_mapper.keys():
-                    for res in sorted(residue_mapper[chain].keys()):
-                        total_residues_list.append('%s.%s' % (chain, str(res)))
-                        new_residues_list.append(residue_mapper[chain][res])
-            else:
-                #chain is specified
-                for res in sorted(residue_mapper[chain].keys()):
-                    total_residues_list.append('%s.%s' % (chain, str(res)))
-                    new_residues_list.append(residue_mapper[chain][res])
-        else:
-            residues_list=mask.split('.')[0].split(',')
-            for x in residues_list:
-                x=x.strip(':')
-                if '-' in x:
-                    start=int(x.split('-')[0])
-                    end=int(x.split('-')[1])
-                    for i in range(start, end+1):
-                        total_residues_list.append('%s.%s' % (chain, str(i)))
-                        new_residues_list.append(residue_mapper[chain][str(i)])
-                else:
-                    total_residues_list.append('%s.%s' % (chain, str(x)))
-                    new_residues_list.append(residue_mapper[chain][str(x)])
-    return total_residues_list, new_residues_list
-
-def map_residues(ref):
-    exclude=['T3P', 'NA ', 'Cl ']
-    residue_mapper=dict()
-    pdbfile=open(ref)
-    amber_resnum=1
-    prev_resnum=0
-    for line in pdbfile.readlines():
-        if line.split()[3] in exclude:
-            break
-        if 'pseu' in line:
-            break
-        if line.split()[0]=='ATOM' or line.split()[0]=='HETATM':
-            resnum = str(line[23:26].strip())
-            chain = str(line[20:22].strip())
-            if chain not in residue_mapper.keys():
-                residue_mapper[chain]=dict()
-            if prev_resnum==0:
-                prev_resnum=resnum
-                residue_mapper[chain][resnum]=str(amber_resnum)
-                amber_resnum+=1
-            if resnum!=prev_resnum:
-                prev_resnum=resnum
-                residue_mapper[chain][resnum]=str(amber_resnum)
-                amber_resnum+=1
-        else:
-            pass
-    return residue_mapper
-
-
-        
-def check_cluster_pdbfile(ref, selection, outname):
-    residue_mapper=map_residues(ref)
-    total_residue_list, new_residue_list=parse_ambmask(residue_mapper, selection)
-    new_ambmask=','.join([str(i) for i in new_residue_list])
-    new_ambmask=':%s' % new_ambmask
-    external_file_io.write_strip_ptraj_file(ref, new_ambmask, outname)
-    command='%s/bin/cpptraj %s ptraj-strip.in' %  (os.environ['AMBERHOME'], ref)
-    output, err=run_linux_process(command)
-    pdbfile=open('%s-cluster-check.pdb' % outname)
-    amber_residues=[]
-    prev_resnum=0
-    for line in pdbfile.readlines():
-        if 'ANISOU' in line:
-            print "PDB reference contains ANISOU lines, please remove these first"
-            sys.exit()
-        if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
-            resnum = int(line[23:26].strip())
-            if prev_resnum==0:
-                amber_residues.append(''.join([line.split()[3], line.split()[5]]))
-                prev_resnum=resnum
-            elif resnum!=prev_resnum:
-                prev_resnum=resnum
-                amber_residues.append(''.join([line.split()[3], line.split()[5]]))
-            else:
-                pass
-    pdbfile.close()
-    print "You asked for %s" % selection
-    #print "We converted to %s" % new_ambmask
-    print "You are getting:"
-    print amber_residues
-    return new_ambmask
-
-def percent_score(percent):
-    if percent >= 50.0:
-        color='red'
-    if percent >= 10 and percent < 50.0:
-        color='pink' 
-    if percent < 10:
-        color='yellow'
-    return color
-
-
-def keypaths(nested):
-    for key, value in nested.iteritems():
-        if isinstance(value, collections.Mapping):
-            for subkey, subvalue in keypaths(value):
-                yield [key] + subkey, subvalue
-        else:
-            yield [key], value
-
-
+def make_analysis_folder(cwd, name):
+    if not os.path.exists('%s/%s-analysis' % (cwd, name)):
+        os.mkdir('%s/%s-analysis' % (cwd, name))
+    os.chdir('%s/%s-analysis' % (cwd, name))
+    return
 
 def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
     ref=os.path.abspath(ref)
@@ -209,13 +86,13 @@ def sovlent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
-    residue_mapper=map_residues(ref)
-    reverse_dict = {value: keypath for keypath, value in keypaths(residue_mapper)}
+    residue_mapper=utilities.map_residues(ref)
+    reverse_dict = {value: keypath for keypath, value in utilities.make_keypaths(residue_mapper)}
     #make sure have absolute path since working in analysis folder now
     make_analysis_folder(cwd, 'solvent')
     # test that the residues you cluster on are the right ones
     if selection!=None:
-        new_ambmask=check_cluster_pdbfile(ref, selection, outname)
+        new_ambmask=utilities.check_cluster_pdbfile(ref, selection, outname)
         external_file_io.write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
     else:
         external_file_io.write_solvent_ptraj_file(ref, trjfile, selection, outname, occupancy)
@@ -240,8 +117,8 @@ def sovlent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
                 acceptor=line.split()[0]
                 donor1=line.split()[1]
                 donor2=line.split()[2]
-                res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict, accept=True)
-                res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor1, reverse_dict)
+                res1_chain, res1_name, orig_res1_num, atom1=utilities.parse_hbond(acceptor, reverse_dict, accept=True)
+                res2_chain, res2_name, orig_res2_num, atom2=utilities.parse_hbond(donor1, reverse_dict)
                 if fraction*100 < 1:
                     break
                 hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
@@ -264,7 +141,7 @@ def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
         sys.exit()
     
     # test that the residues you cluster on are the right ones
-    new_ambmask=check_cluster_pdbfile(ref, cluster, outname)
+    new_ambmask=utilities.check_cluster_pdbfile(ref, cluster, outname)
     external_file_io.write_clustering_ptraj_file(ref, trjfile, new_ambmask, d, outname)
     command='%s/bin/cpptraj %s ptraj-cluster.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
@@ -305,9 +182,9 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     trjfile=os.path.abspath(trjfile)
     make_analysis_folder(cwd, 'hbonds')
     #make sure have absolute path since working in analysis folder now
-    residue_mapper=map_residues(ref)
-    new_ambmask1=check_cluster_pdbfile(ref, [selection[0],], outname)
-    new_ambmask2=check_cluster_pdbfile(ref, [selection[1],], outname)
+    residue_mapper=utilities.map_residues(ref)
+    new_ambmask1=utilities.check_cluster_pdbfile(ref, [selection[0],], outname)
+    new_ambmask2=utilities.check_cluster_pdbfile(ref, [selection[1],], outname)
     external_file_io.write_hbond_ptraj(trjfile, new_ambmask1, new_ambmask2, outname)
     command='%s/bin/cpptraj %s ptraj-hbonds.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
@@ -328,8 +205,8 @@ def selection_checker(cwd, reffile, selection):
     ref=os.path.abspath(reffile)
     ref_basename=os.path.basename(ref)
     make_analysis_folder(cwd, 'selection')
-    residue_mapper=map_residues(ref)
-    new_ambmask=check_cluster_pdbfile(ref, selection, outname='test')
+    residue_mapper=utilities.map_residues(ref)
+    new_ambmask=utilities.check_cluster_pdbfile(ref, selection, outname='test')
     return
 
 
@@ -441,7 +318,3 @@ Default this is 0.8. Also will report significant solvent hbonds.''')
 if __name__ == "__main__":
     args = parse_commandline()
     main(args)
-
-
-
-

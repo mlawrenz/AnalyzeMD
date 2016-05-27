@@ -1,4 +1,5 @@
 import glob
+import utilities
 import collections
 import shutil
 import numpy
@@ -100,7 +101,7 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
     pymol_handle.write('hide lines, protein\n')
     ohandle=open('%s_all_hbonds.dat' % outname, 'w')
     # need a damn reverse dict for this
-    reverse_dict = {value: keypath for keypath, value in keypaths(residue_mapper)}
+    reverse_dict = {value: keypath for keypath, value in utilities.make_keypaths(residue_mapper)}
     for file in files:
         print "-----%s----" % file
         fhandle=open(file)
@@ -115,8 +116,8 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
             angle=line.split()[6]
             if fraction < 0.05:
                 continue
-            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict)
-            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor, reverse_dict)
+            res1_chain, res1_name, orig_res1_num, atom1=utilities.parse_hbond(acceptor, reverse_dict)
+            res2_chain, res2_name, orig_res2_num, atom2=utilities.parse_hbond(donor, reverse_dict)
             hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
             print hbond, percent
             ohandle.write('%s\t%s\n' % (hbond, percent))
@@ -124,7 +125,7 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
             pymol_donor='%s/%s/%s' % (res2_chain, orig_res2_num, atom2)
             pymol_handle.write('show sticks, chain %s and resi %s\n' % (res1_chain, orig_res1_num))
             pymol_handle.write('show sticks, chain %s and resi %s\n' % (res2_chain, orig_res2_num))
-            hcolor=percent_score(percent)
+            hcolor=utilities.percent_score(percent)
             if hcolor=='red':
                 pymol_handle.write('dist %s_strong_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
                 pymol_handle.write('color %s, %s_strong_hbonds\n' % (hcolor, outname))
@@ -140,5 +141,4 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
     pymol_handle.close()
     ohandle.close()
     return 
-
 
