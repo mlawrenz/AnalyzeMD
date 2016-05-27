@@ -3,7 +3,6 @@ import shutil
 import subprocess
 from subprocess import PIPE
 import optparse
-import schrodinger.trajectory.analysis as analysis
 from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
 from optparse import OptionParser
 from schrodinger.structutils.analyze import evaluate_asl
@@ -166,6 +165,8 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
 
 
 def main(options):
+    import pdb
+    pdb.set_trace()
     cwd=os.getcwd()
     if options.solvent==True:
         print "Extracting wrapped DCD trajectory with solvent"

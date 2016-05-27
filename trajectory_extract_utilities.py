@@ -1,7 +1,6 @@
 import sys
 import os
 from schrodinger.trajectory.desmondsimulation import create_simulation
-import schrodinger.trajectory.analysis as analysis
 from schrodinger.structure import write_ct, write_ct_pdb
 from optparse import OptionParser
 from schrodinger.structutils.analyze import evaluate_asl
