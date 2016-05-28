@@ -30,6 +30,9 @@ def get_residues_from_radius(radius, ref):
     asl = 'fillres ((within %i ligand ) and not (res.ptype "T3P"))' % (int(float(radius)))
     st=StructureReader(ref).next()
     atoms=evaluate_asl(st, asl)
+    if len(atoms)==0:
+        print "NO LIGAND IN REFERENCE FILE"
+        sys.exit()
     pocket=st.extract(atoms)
     resnames=[i.pdbres for i in pocket.residue]
     resnums=[i.resnum for i in pocket.residue]
