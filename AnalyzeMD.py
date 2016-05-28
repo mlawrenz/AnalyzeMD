@@ -1,4 +1,8 @@
 import glob
+import optparse
+from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
+from optparse import OptionParser
+from schrodinger.structutils.analyze import evaluate_asl
 import external_file_io
 import utilities
 import collections
@@ -6,11 +10,11 @@ import shutil
 import numpy
 import sys
 from pdb_bfactor import *
-
 import os
 import subprocess
 from subprocess import PIPE
 import argparse
+import textwrap as _textwrap
 
 """
 Analyze MD
@@ -28,6 +32,17 @@ This file can be loaded into VMD:
 
 """
 
+class MultilineFormatter(argparse.HelpFormatter):
+    def _fill_text(self, text, width, indent):
+        text = self._whitespace_matcher.sub(' ', text).strip()
+        paragraphs = text.split('|n ')
+        multiline_text = ''
+        for paragraph in paragraphs:
+            formatted_paragraph = _textwrap.fill(paragraph, width,
+initial_indent=indent, subsequent_indent=indent) + '\n\n'
+            multiline_text = multiline_text + formatted_paragraph
+        return multiline_text
+
 def run_linux_process(command):
     p=subprocess.Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
     p.wait()
@@ -39,6 +54,7 @@ def make_analysis_folder(cwd, name):
         os.mkdir('%s/%s-analysis' % (cwd, name))
     os.chdir('%s/%s-analysis' % (cwd, name))
     return
+
 
 def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
     ref=os.path.abspath(ref)
@@ -222,14 +238,12 @@ def main(args):
         print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
     cwd=os.getcwd()
+
     if args.reffile is None:
         print "SUPPLY A REFERENCE PDBFILE"
         sys.exit()
     if not os.path.exists(args.reffile):
         print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
-    if args.analysis=='selection_check':
-        selection_checker(cwd, args.reffile, args.selection)
         sys.exit()
     if args.trjfile is None:
         print "SUPPLY A TRJFILE"
@@ -240,29 +254,47 @@ def main(args):
     if args.analysis=='rmsd_calc':
         print "Running %s analysis" % args.rmsdtype
         rmsd_and_rmsf(cwd, args.reffile, args.trjfile, args.rmsdtype)
+    # all analysis below requires these
+    if args.radius is None and args.selection is None:
+        print "Need to pass in a selection or radius around ligand"
+        sys.exit()
+    if args.radius is not None:
+        selection=utilities.get_residues_from_radius(args.radius, args.reffile)
+    else:
+        selection=args.selection
+    if args.analysis=='selection_check':
+        selection_checker(cwd, args.reffile, selection)
+        sys.exit()
     if args.analysis=='clustering':
         print "Running clustering analysis" 
-        clustering(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.distance)
+        clustering(cwd, args.outname, args.reffile, args.trjfile, selection, args.distance)
     if args.analysis=='hbonds':
-        hbonds(cwd, args.outname, args.reffile, args.trjfile, args.selection)
+        hbonds(cwd, args.outname, args.reffile, args.trjfile, selection)
     if args.analysis=='solvent_calc':    
-        sovlent_calc(cwd, args.outname, args.reffile, args.trjfile, args.selection, args.occupancy)
+        sovlent_calc(cwd, args.outname, args.reffile, args.trjfile, selection, args.occupancy)
     print "done with analysis"
     
 
 
 def parse_commandline():
     parser = argparse.ArgumentParser(description='''
-Run chosen analysis on MD DCD trajectory file. Requires a reference PDBfile and
-DCD trajectory passed in. Choose analysis workflow: rmsd or clustering. See additional options for each
-analysis choice by running: 
+Requires a reference PDBfile (all residues numbers determined from this) and DCD
+trajectory.
+ Choose analysis from
+positional arguments (NOTE THAT POSITIONS FOR ARGS MATTER). See additional options for each analysis choice by running: 
+|n
 $SCHRODINGER/run /home/mlawrenz/AnalyzeMD/AnalyzeMD.py clustering -h
+|n
 Examples:
+|n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd  rmsd_calc rmsd-all
+|n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd clustering --selection '50-55,131.B' ':48,49.F' -o inter-chain -d 1.0
-$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o 4mdk-holo-redo --group1 1-163 --group2 164-240^C
-
-''')
+|n
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o 4mdk-holo-redo --radius 4 
+|n
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r waters-reference.pdb -t waters-trj.dcd solvent_calc  -o 'ligand' --selection 'DRG.L'
+''', usage='%(prog)s [OPTIONS]', formatter_class=MultilineFormatter)
 
 
     #parser.add_argument("analysis", choices=["rmsd", "clustering", "hbond"])
@@ -280,7 +312,10 @@ commas and dashes and chains specified at the end with a period. If you do not
 provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
 Can include multiple selections from multiple chains.
 ''')
-    x_parser=subparsers.add_parser("selection_check", parents=[mask_parser], help='''
+    radius_parser=argparse.ArgumentParser(add_help=False)
+    radius_parser.add_argument('--radius',  dest='radius',
+help='''Radius around ligand to define selection of residues for analysis''')
+    x_parser=subparsers.add_parser("selection_check", parents=[mask_parser, radius_parser], help='''
 pass in the mask and get the corresponding AMBER numbers''')
     r_parser=subparsers.add_parser("rmsd_calc", help='''
 Computes RMSD (distance from reference structure) and RMSF (distance from average
@@ -290,7 +325,7 @@ The chosen datatype is mapped to the bfactors of reference file for visualizatio
 bfactor-${choice}-${referencefile}.pdb
 ''')
     r_parser.add_argument('rmsdtype',choices=['rmsd-all', 'rmsd-bb', 'rmsf-all', 'rmsf-bb'], help='type of rmsd or rmsf calculation, using all heavy atoms or just backbone CA atoms')
-    c_parser=subparsers.add_parser("clustering", parents=[mask_parser], help='''
+    c_parser=subparsers.add_parser("clustering", parents=[mask_parser, radius_parser], help='''
 Uses hierarchical clustering and average linkage for RMSD of selected residues
 passed in with selection, and the minimum distance between clusters is
 specified by the distance argument.''')
@@ -298,15 +333,14 @@ specified by the distance argument.''')
                       help='clustering RMSD cutoff to define clusters. recommend 2 for most small changes.')
     c_parser.add_argument('-o', '--outname', dest='outname', default='set',
                       help='name for clustering output, will precede a name NAME-cluster-*')
-    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser], help='''
+    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser], help='''
 Compute hydrogen bonds between two groups of residues specified with --selection
 (can be all to all with same selection. Output is pml file with "strong" hbonds
 defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 "weak" as >=1 and < 10 and yellow.''')
     h_parser.add_argument('-o', '--outname', dest='outname', default='set',
                       help='name for hbonds output, please do not use dashes or weird characters')
-    c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, outname_parser], help='''
-Analyze water occupancy over trajectory and compute solvent hbonds to a provided
+    c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, radius_parser, outname_parser], help=''' Analyze water occupancy over trajectory and compute solvent hbonds to a provided
 mask. Will output a PDB file with water density at a %% of the max density.
 Default this is 0.8. Also will report significant solvent hbonds.''')
     c_parser.add_argument('-o', '--occupancy', dest='occupancy', default=0.8,

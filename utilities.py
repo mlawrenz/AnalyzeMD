@@ -1,4 +1,6 @@
 import glob
+from schrodinger.structutils.analyze import evaluate_asl
+from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
 import external_file_io
 import collections
 import shutil
@@ -21,6 +23,31 @@ def run_linux_process(command):
     p.wait()
     output, err=p.communicate()
     return output, err
+
+
+
+def get_residues_from_radius(radius, ref):
+    asl = 'fillres ((within %i ligand ) and not (res.ptype "T3P"))' % (int(float(radius)))
+    st=StructureReader(ref).next()
+    atoms=evaluate_asl(st, asl)
+    pocket=st.extract(atoms)
+    resnames=[i.pdbres for i in pocket.residue]
+    resnums=[i.resnum for i in pocket.residue]
+    chains=[i.chain for i in pocket.residue]
+    data=dict()
+    for chain in set(chains):
+        for (n,c) in zip(resnums, chains):
+            if c not in data.keys():
+                data[c]=[]
+            if str(n) not in data[c]:
+                data[c].append(str(n))
+    selection=[]
+    for chain in data.keys():
+        selection.append(','.join(data[chain]) + '.%s' % chain)
+    if len(selection)==1:
+        selection=[selection,]
+    return selection
+
 
 
 def parse_hbond(amber_mask, reverse_dict, accept=False):
@@ -78,11 +105,11 @@ def map_residues(ref):
     amber_resnum=1
     prev_resnum=0
     for line in pdbfile.readlines():
-        if line.split()[3] in exclude:
-            break
-        if 'pseu' in line:
-            break
         if line.split()[0]=='ATOM' or line.split()[0]=='HETATM':
+            if line.split()[3] in exclude:
+                break
+            if 'pseu' in line:
+                break
             resnum = str(line[23:26].strip())
             chain = str(line[20:22].strip())
             if chain not in residue_mapper.keys():
