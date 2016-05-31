@@ -310,7 +310,7 @@ def main(args):
 def parse_commandline():
     parser = argparse.ArgumentParser(description='''
 Requires a reference PDBfile (all residues numbers determined from this) and DCD
-trajectory.
+trajectory. *MAKE SURE YOU ALIGN THIS FILE TO YOUR PROJECT NEEDS*
  Choose analysis from
 positional arguments (NOTE THAT POSITIONS FOR ARGS MATTER). See additional options for each analysis choice by running: 
 |n
