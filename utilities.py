@@ -32,6 +32,7 @@ def get_residues_from_radius(radius, ref):
     atoms=evaluate_asl(st, asl)
     if len(atoms)==0:
         print "NO LIGAND IN REFERENCE FILE"
+        print "no ligand in reference file"
         sys.exit()
     pocket=st.extract(atoms)
     resnames=[i.pdbres for i in pocket.residue]

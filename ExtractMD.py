@@ -133,7 +133,7 @@ def extract_frames_from_trajectory(options):
     csim = create_simulation(cmsfile, trjfile)
 
     # hardcode basename
-    basename = 'extract-%s' % basename
+    basename = 'solute-%s' % basename
     frames='::5'
     total_frame = csim.total_frame
     slice_list = _parse_frames(frames)
@@ -149,7 +149,7 @@ def extract_frames_from_trajectory(options):
 
 
 def convert_desmond_to_dcd(cwd, tmp_folder, basename):
-    program='/home/mlawrenz/LINUXAMD64/bin/catdcd4.0/catdcd'
+    program='%s/catdcd' % os.environ['CATDCD_DIR']
     if not os.path.exists('%s/analysis' % cwd):
         os.mkdir('%s/analysis' % cwd)
     command='{0} -o {1}/analysis/{2}.dcd -otype dcd -s {3}/{2}_00000.pdb -pdb `ls -v {3}/{2}*pdb`'.format(program, cwd, basename, tmp_folder)
@@ -165,7 +165,6 @@ def convert_desmond_to_dcd(cwd, tmp_folder, basename):
         sys.exit()
     return
 
-
 def main(options):
     cwd=os.getcwd()
     try:
@@ -174,7 +173,12 @@ def main(options):
         print "AMBERHOME environment variable is not set"
         print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
-
+    try:
+        os.environ['CATDCD_DIR']    
+    except KeyError:
+        print "CATDCD_DIR environment variable is not set"
+        print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
+        sys.exit()
     if options.debug==True:
         import pdb
         pdb.set_trace()
