@@ -226,35 +226,49 @@ def selection_checker(cwd, reffile, selection):
     return
 
 
-def traj_combine(ref, file_list):
+def traj_combine(cwd, ref, file_list):
     basename=os.path.basename(ref)
+    basename=basename.split('.pdb')[0]
     program='%s/catdcd' % os.environ['CATDCD_DIR']
-    command='{0} -o %s/combine-%s.dcd -otype dcd -dcd `cat %s`'.format(program, cwd, basename, file_list)
+    command='{0} -o {1}/combine-{2}.dcd -otype dcd -dcd `cat {3}`'.format(program, cwd, basename, file_list)
     output, err=run_linux_process(command)
     erroroutput=False
     if 'rror' in err:
         erroroutput=err
     if 'rror' in output:
         erroroutput=output
-    if erroroutput=True: 
+    if erroroutput==True: 
         numpy.savetxt('catdcd.err', erroroutput.split('\n'), fmt='%s')
         print "ERROR IN CATDCD CALCULATION"
         print "CHECK catdcd.err"
         sys.exit()
+    if not os.path.exists('{0}/combine-{1}.dcd'.format(cwd, basename)):
+        print "ERROR IN CATDCD CALCULATION"
+    else:
+        print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, basename)
     return
 
 
 def main(args):
+    cwd=os.getcwd()
     if args.debug==True:
         import pdb
         pdb.set_trace()
+    if args.analysis=='traj_combine':
+        try:
+            os.environ['CATDCD_DIR']
+            traj_combine(cwd, args.reffile, args.file_list)
+            sys.exit()
+        except KeyError:
+            print "CATDCD_DIR environment variable is not set"
+            print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
+            sys.exit()
     try: 
         os.environ['AMBERHOME']
     except KeyError:
-         % os.environ['CATDCD_DIR']print "AMBERHOME environment variable is not set"
+        print "AMBERHOME environment variable is not set"
         print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
-    cwd=os.getcwd()
 
     if args.reffile is None:
         print "SUPPLY A REFERENCE PDBFILE"
@@ -279,14 +293,6 @@ def main(args):
         selection=utilities.get_residues_from_radius(args.radius, args.reffile)
     else:
         selection=args.selection
-    if args.analysis=='traj_combine':
-        try:
-            os.environ['CATDCD_DIR']
-            traj_combine(args.reffile, args.file_list)
-        except KeyError:
-            print "CATDCD_DIR environment variable is not set"
-            print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
-            sys.exit()
     if args.analysis=='selection_check':
         selection_checker(cwd, args.reffile, selection)
         sys.exit()
