@@ -226,6 +226,23 @@ def selection_checker(cwd, reffile, selection):
     return
 
 
+def traj_combine(ref, file_list):
+    basename=os.path.basename(ref)
+    program='%s/catdcd' % os.environ['CATDCD_DIR']
+    command='{0} -o %s/combine-%s.dcd -otype dcd -dcd `cat %s`'.format(program, cwd, basename, file_list)
+    output, err=run_linux_process(command)
+    erroroutput=False
+    if 'rror' in err:
+        erroroutput=err
+    if 'rror' in output:
+        erroroutput=output
+    if erroroutput=True: 
+        numpy.savetxt('catdcd.err', erroroutput.split('\n'), fmt='%s')
+        print "ERROR IN CATDCD CALCULATION"
+        print "CHECK catdcd.err"
+        sys.exit()
+    return
+
 
 def main(args):
     if args.debug==True:
@@ -234,7 +251,7 @@ def main(args):
     try: 
         os.environ['AMBERHOME']
     except KeyError:
-        print "AMBERHOME environment variable is not set"
+         % os.environ['CATDCD_DIR']print "AMBERHOME environment variable is not set"
         print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
     cwd=os.getcwd()
@@ -262,6 +279,14 @@ def main(args):
         selection=utilities.get_residues_from_radius(args.radius, args.reffile)
     else:
         selection=args.selection
+    if args.analysis=='traj_combine':
+        try:
+            os.environ['CATDCD_DIR']
+            traj_combine(args.reffile, args.file_list)
+        except KeyError:
+            print "CATDCD_DIR environment variable is not set"
+            print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
+            sys.exit()
     if args.analysis=='selection_check':
         selection_checker(cwd, args.reffile, selection)
         sys.exit()
@@ -315,6 +340,9 @@ Can include multiple selections from multiple chains.
     radius_parser=argparse.ArgumentParser(add_help=False)
     radius_parser.add_argument('--radius',  dest='radius',
 help='''Radius around ligand to define selection of residues for analysis''')
+    d_parser=subparsers.add_parser("traj_combine", help='Combine DCD files into one')
+    d_parser.add_argument('-f', '--file-list', dest='file_list',
+                      help='file with DCD trajectories to be combined')
     x_parser=subparsers.add_parser("selection_check", parents=[mask_parser, radius_parser], help='''
 pass in the mask and get the corresponding AMBER numbers''')
     r_parser=subparsers.add_parser("rmsd_calc", help='''
