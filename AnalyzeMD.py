@@ -230,26 +230,6 @@ def selection_checker(cwd, reffile, selection):
 def traj_combine(cwd, ref, file_list):
     basename=os.path.basename(ref)
     basename=basename.split('.pdb')[0]
-    program='%s/u' % os.environ['SCHRODINGER']
-    command='{0} -o {1}/combine-{2}.dcd -otype dcd -dcd `cat {3}`'.format(program, cwd, basename, file_list)
-    output, err=run_linux_process(command)
-    erroroutput=False
-    if 'rror' in err:
-        erroroutput=err
-    if 'rror' in output:
-        erroroutput=output
-    if erroroutput==True: 
-        numpy.savetxt('catdcd.err', erroroutput.split('\n'), fmt='%s')
-        print "ERROR IN CATDCD CALCULATION"
-        print "CHECK catdcd.err"
-        sys.exit()
-    if not os.path.exists('{0}/combine-{1}.dcd'.format(cwd, basename)):
-        print "ERROR IN CATDCD CALCULATION"
-    else:
-        print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, basename)
-    return
-
-def pdb_align(ref, inputfile):
     program='%s/catdcd' % os.environ['CATDCD_DIR']
     command='{0} -o {1}/combine-{2}.dcd -otype dcd -dcd `cat {3}`'.format(program, cwd, basename, file_list)
     output, err=run_linux_process(command)
@@ -275,18 +255,6 @@ def main(args):
     if args.debug==True:
         import pdb
         pdb.set_trace()
-    if args.reffile is None:
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
-    if not os.path.exists(args.reffile):
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
-    try: 
-        os.environ['SCHRODINGER']
-    except KeyError:
-        print "SCHRODINGER environment variable is not set"
-        sys.exit()
-    # run jobs that don't need other checks
     if args.analysis=='traj_combine':
         try:
             os.environ['CATDCD_DIR']
@@ -296,14 +264,18 @@ def main(args):
             print "CATDCD_DIR environment variable is not set"
             print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
             sys.exit()
-    if args.analysis=='pdb_align':
-        pdb_align(args.reffile, args.inputfile)
-    # run jobs that need AMBER
     try: 
         os.environ['AMBERHOME']
     except KeyError:
         print "AMBERHOME environment variable is not set"
         print "On AWS this is /home/mlawrenz/amber14/"
+        sys.exit()
+
+    if args.reffile is None:
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    if not os.path.exists(args.reffile):
+        print "SUPPLY A REFERENCE PDBFILE"
         sys.exit()
     if args.trjfile is None:
         print "SUPPLY A TRJFILE"
@@ -376,7 +348,8 @@ Can include multiple selections from multiple chains.
     radius_parser=argparse.ArgumentParser(add_help=False)
     radius_parser.add_argument('--radius',  dest='radius',
 help='''Radius around ligand to define selection of residues for analysis''')
-    a_parser=subparsers.add_parser("pdb_align", help='Align 2 structure files')
+      a_parser=subparsers.add_parser("pdb_align", help='Align 2 structure
+files')
     a_parser.add_argument('-f', '--inputfile', dest='inputfile',
                       help='file to align to your reference passed in with -r')
     d_parser=subparsers.add_parser("traj_combine", help='Combine DCD files into one')
