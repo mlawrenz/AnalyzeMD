@@ -192,6 +192,7 @@ def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
 def hbonds(cwd, outname, ref, trjfile, selection):
     if len(selection) != 2:
         print "HBOND REQUIRES 2 INPUT GROUPS"
+        print "Your selection is:", selection
         sys.exit()
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
@@ -285,6 +286,7 @@ def main(args):
     if args.analysis=='rmsd_calc':
         print "Running %s analysis" % args.rmsdtype
         rmsd_and_rmsf(cwd, args.reffile, args.trjfile, args.rmsdtype)
+        sys.exit()
     # all analysis below requires these
     if args.radius is None and args.selection is None:
         print "Need to pass in a selection or radius around ligand"

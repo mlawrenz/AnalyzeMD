@@ -1,0 +1,4 @@
+reference xtal.pdb
+trajin extract-desmond_fbw7_505C_252471_prop_restrain_reference.pdb
+rms reference out rmsd-ca.dat @CA,C,N,O
+trajout project-desmond_fbw7_505C_252471_prop_restrain_reference.pdb

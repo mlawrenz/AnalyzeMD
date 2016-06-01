@@ -145,9 +145,9 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
             if hcolor=='yellow':
                 pymol_handle.write('dist %s_weak_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
                 pymol_handle.write('color %s, %s_weak_hbonds\n' % (hcolor, outname))
-    pymol_handle.write('hide labels, ligand_weak_hbonds\n')
-    pymol_handle.write('hide labels, ligand_medium_hbonds\n')
-    pymol_handle.write('hide labels, ligand_strong_hbonds\n')
+    pymol_handle.write('hide labels, %s_weak_hbonds\n' % outname)
+    pymol_handle.write('hide labels, %s_medium_hbonds\n' % outname)
+    pymol_handle.write('hide labels, %s_strong_hbonds\n' % outname)
     pymol_handle.close()
     ohandle.close()
     return 
