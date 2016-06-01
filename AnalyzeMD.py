@@ -249,12 +249,48 @@ def traj_combine(cwd, ref, file_list):
         print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, basename)
     return
 
+def pdb_align(ref, inputfile):
+    basename_file=os.path.basename(inputfile)
+    program='%s/utilities/structalign' % os.environ['SCHRODINGER']
+    command='{0} -asl backbone {1} {2}'.format(program, ref, inputfile)
+    output, err=run_linux_process(command)
+    erroroutput=False
+    if 'rror' in err:
+        erroroutput=err
+    if 'rror' in output:
+        erroroutput=output
+    if erroroutput==True: 
+        numpy.savetxt('align.err', erroroutput.split('\n'), fmt='%s')
+        print "ERROR IN ALIGN CALCULATION"
+        print "CHECK align.err"
+        sys.exit()
+    if not os.path.exists('rot-%s' % basename_file):
+        print "ERROR IN ALIGN CALCULATION"
+    else:
+        shutil.move('rot-%s' % basename_file, 'aligned-%s' % basename_file)
+        print '%s is aligned to %s, named aligned-%s' % (inputfile, ref, basename_file)
+        for line in output:
+            if 'RMSD' in line:
+                print line
+    return
 
 def main(args):
     cwd=os.getcwd()
     if args.debug==True:
         import pdb
         pdb.set_trace()
+    if args.reffile is None:
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    if not os.path.exists(args.reffile):
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    try:
+        os.environ['SCHRODINGER']
+    except KeyError:
+        print "SCHRODINGER environment variable is not set"
+        sys.exit()
+    # run jobs that don't need other checks
     if args.analysis=='traj_combine':
         try:
             os.environ['CATDCD_DIR']
@@ -264,19 +300,17 @@ def main(args):
             print "CATDCD_DIR environment variable is not set"
             print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
             sys.exit()
+    if args.analysis=='pdb_align':
+        pdb_align(args.reffile, args.inputfile)
+        sys.exit()
+    # run jobs that need AMBER
     try: 
         os.environ['AMBERHOME']
     except KeyError:
         print "AMBERHOME environment variable is not set"
         print "On AWS this is /home/mlawrenz/amber14/"
         sys.exit()
-
-    if args.reffile is None:
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
-    if not os.path.exists(args.reffile):
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
+    # check for traj file
     if args.trjfile is None:
         print "SUPPLY A TRJFILE"
         sys.exit()
@@ -346,10 +380,8 @@ provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
 Can include multiple selections from multiple chains.
 ''')
     radius_parser=argparse.ArgumentParser(add_help=False)
-    radius_parser.add_argument('--radius',  dest='radius',
-help='''Radius around ligand to define selection of residues for analysis''')
-      a_parser=subparsers.add_parser("pdb_align", help='Align 2 structure
-files')
+    radius_parser.add_argument('--radius',  dest='radius', help='''Radius around ligand to define selection of residues for analysis''')
+    a_parser=subparsers.add_parser("pdb_align", help='Align 2 structure files')
     a_parser.add_argument('-f', '--inputfile', dest='inputfile',
                       help='file to align to your reference passed in with -r')
     d_parser=subparsers.add_parser("traj_combine", help='Combine DCD files into one')
