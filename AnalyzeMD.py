@@ -249,10 +249,10 @@ def traj_combine(cwd, ref, file_list):
         print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, basename)
     return
 
-def pdb_align(ref, inputfile):
+def pdb_align(ref, inputfile, asl='backbone'):
     basename_file=os.path.basename(inputfile)
     program='%s/utilities/structalign' % os.environ['SCHRODINGER']
-    command='{0} -asl backbone {1} {2}'.format(program, ref, inputfile)
+    command='{0} -asl "{1}" {2} {3}'.format(program, asl, ref, inputfile)
     output, err=run_linux_process(command)
     erroroutput=False
     if 'rror' in err:
@@ -269,9 +269,13 @@ def pdb_align(ref, inputfile):
     else:
         shutil.move('rot-%s' % basename_file, 'aligned-%s' % basename_file)
         print '%s is aligned to %s, named aligned-%s' % (inputfile, ref, basename_file)
-        for line in output:
+        for line in output.split('\n'):
             if 'RMSD' in line:
-                print line
+                value=float(line.split()[1])
+                if value > 1.0:
+                    print "WARNING, RMSD FIT IS HIGH at %0.2f" % value
+                    print "BE SURE TO CONFIRM YOUR ALIGNMENT IS CORRECT"
+                    print "TRY PASSING IN --radius around ligand, if present"
     return
 
 def main(args):
@@ -301,7 +305,11 @@ def main(args):
             print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
             sys.exit()
     if args.analysis=='pdb_align':
-        pdb_align(args.reffile, args.inputfile)
+        if args.radius!=None:
+            asl='fillres within 10 (ligand)'
+            pdb_align(args.reffile, args.inputfile, asl)
+        else:
+            pdb_align(args.reffile, args.inputfile)
         sys.exit()
     # run jobs that need AMBER
     try: 
@@ -381,7 +389,7 @@ Can include multiple selections from multiple chains.
 ''')
     radius_parser=argparse.ArgumentParser(add_help=False)
     radius_parser.add_argument('--radius',  dest='radius', help='''Radius around ligand to define selection of residues for analysis''')
-    a_parser=subparsers.add_parser("pdb_align", help='Align 2 structure files')
+    a_parser=subparsers.add_parser("pdb_align", parents=[radius_parser], help='Align 2 structure files')
     a_parser.add_argument('-f', '--inputfile', dest='inputfile',
                       help='file to align to your reference passed in with -r')
     d_parser=subparsers.add_parser("traj_combine", help='Combine DCD files into one')
