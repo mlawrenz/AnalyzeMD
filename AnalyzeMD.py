@@ -1,15 +1,13 @@
 import glob
 import optparse
-from schrodinger.structure import write_ct, write_ct_pdb, StructureReader
 from optparse import OptionParser
-from schrodinger.structutils.analyze import evaluate_asl
 import external_file_io
 import utilities
 import collections
 import shutil
 import numpy
 import sys
-from pdb_bfactor import *
+import pdb_bfactor
 import os
 import subprocess
 from subprocess import PIPE
@@ -77,10 +75,10 @@ def rmsd_and_rmsf(cwd, ref, trjfile, datatype):
     f.close()
     datafile='%s-perresavg.dat' % datatype
     if datatype=='rmsf-bb':
-        bb=check_pdb_file(pdb_data)
-        maxval, out=map_file_by_index(datafile, pdb_data, bb)
+        bb=pdb_bfactor.check_pdb_file(pdb_data)
+        maxval, out=pdb_bfactor.map_file_by_index(datafile, pdb_data, bb)
     else:
-        maxval, out=map_file_by_index(datafile, pdb_data)
+        maxval, out=pdb_bfactor.map_file_by_index(datafile, pdb_data)
     outfilename='bfactor-%s-%s' % (datatype, ref_basename)
     outfile=open(outfilename, 'w')
     for line in out:
@@ -250,6 +248,14 @@ def traj_combine(cwd, ref, file_list):
     return
 
 def pdb_align(ref, inputfile, asl='backbone'):
+    verdict=utilities.check_selection_boolean(ref, 'T3P')
+    if verdict==True:
+        print "FOR NOW DO NOT ALIGN SOLVENT STRUCTURES THIS WAY"
+        sys.exit()
+    verdict=utilities.check_selection_boolean(inputfile, 'T3P')
+    if verdict==True:
+        print "FOR NOW DO NOT ALIGN SOLVENT STRUCTURES THIS WAY"
+        sys.exit()
     basename_file=os.path.basename(inputfile)
     program='%s/utilities/structalign' % os.environ['SCHRODINGER']
     command='{0} -asl "{1}" {2} {3}'.format(program, asl, ref, inputfile)

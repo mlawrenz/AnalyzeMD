@@ -54,7 +54,7 @@ def write_clustering_ptraj_file(ref, trjfile, ambmask, d, outname):
 trajin  {1}
 reference {0}
 rms reference out rmsd-ca.dat @CA
-cluster {2} mass epsilon {3} out {4}-cluster-d{3}_out averagelinkage gracecolor summary {4}-cluster-d{3}-summary_out info {4}-cluster-d{3}-Cluster_info repout {4}-cluster-d{3}-centroid repfmt pdb
+cluster {2} mass epsilon {3} out {4}-cluster-d{3}_out averagelinkage gracecolor summary {4}-cluster-d{3}-summary_out info {4}-cluster-d{3}-Cluster_info repout {4}-cluster-d{3}-centroid repfmt pdb nofit
 '''.format(ref, trjfile, ambmask, d, outname))
     return
 

@@ -25,6 +25,16 @@ def run_linux_process(command):
     return output, err
 
 
+def check_selection_boolean(ref, target):
+    st=StructureReader(ref).next()
+    atoms=evaluate_asl(st, 'all')
+    sub=st.extract(atoms)
+    resnames=[i.pdbres.rstrip() for i in sub.residue]
+    if target in resnames:
+        verdict=True
+    else:
+        verdict=False
+    return verdict
 
 def get_residues_from_radius(radius, ref):
     asl = 'fillres ((within %i ligand ) and not (res.ptype "T3P"))' % (int(float(radius)))
