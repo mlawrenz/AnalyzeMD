@@ -16,23 +16,10 @@ from trajectory_extract_utilities import *
 
 
 """
-Analyze MD
-===========
-
-** To be used on Schrodinger Desmond results  **
-
-Program requires as input (see options with -h flag):
-*
-*
-
-Program requires AMBERTools and will produce DCD files
-This file can be loaded into VMD:
-* you can run the command: vmd -pdb reference.pdb -dcd file.dcd
-For extracting solvated trajectories you will need VMD installed. Some wrapping
-problems may persist so use the resulting solvated trajectories with caution and
-only for solvent analysis.
+Extract MD
 
 """
+
 
 def _parse_frames(frames_str):
     slice_list=[]
@@ -215,15 +202,25 @@ def main(options):
 
 
 def parse_commandline():
-    parser = optparse.OptionParser()
+    parser = optparse.OptionParser(description='''Converts a single Schrodinger Desmond
+trajectory to a single DCD trajectory with a corresponding PDB reference file. This
+exact reference file needs to be used for analysis, with the residue numbers and
+chain information. Use AnalyzeMD.py to align this PDB file to a reference crystal PDB, and combine
+trajectories from multiple runs into a single trajectory.
+Required environment variables (as installed on AWS):                                                                                 
+export AMBERHOME=/home/mlawrenz/amber14                                                              
+export CATDCD_DIR=/home/mlawrenz/linuxamd64/bin/catdcd4.0/                                          
+export VMD_DIR=/home/mlawrenz/VMD1.9.2/bin/
+''')
+
     parser.add_option('-c', '--cmsfile', dest='cmsfile',
-                      help='cmsfile for trajectory to analyze')
+                      help='desmond cmsfile for trajectory to analyze')
     parser.add_option('-t', '--trjfile', dest='trjfile',
-                      help='trj directory for trajectory analysis')
+                      help='desmond trj/ directory for trajectory analysis')
     parser.add_option("-a", "--asl",
                   action="store", dest="asl", default='protein',
-                  help="asl to specify what part of structure to be extracted, provide name of ligand if extracting solvent")
-    parser.add_option('--solvent', action="store_true")
+                  help='asl to specify what part of structure to be extracted. Default is protein. Can use "protein or ligand"')
+    parser.add_option('--solvent', action="store_true",  help='Extract solvent trajs. These may have a few remaining jumps in the protein. Use only for solvent analysis (which still may have some problems).')
     parser.add_option('--debug', dest='debug', action="store_true")
     (options, args) = parser.parse_args()
     return (options, args)
