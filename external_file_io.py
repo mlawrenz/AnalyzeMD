@@ -102,8 +102,6 @@ hide (h. and (e. c extend 1))
     return
 
 def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
-    format_data=dict()
-    all_hbonds=[]
     pymol_handle=open('%s_hbonds.pml' % outname, 'w')
     pymol_handle.write('load %s\n' % ref)
     pymol_handle.write('sel protein, polymer\n')
@@ -150,5 +148,58 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
     pymol_handle.write('hide labels, %s_strong_hbonds\n' % outname)
     pymol_handle.close()
     ohandle.close()
+    return 
+
+def write_bridged_residues_to_pml(file, amberdata, total_frames, outname, reverse_dict, ref):
+    pymol_handle=open('%s_bridged.pml' % outname, 'w')
+    pymol_handle.write('load %s\n' % ref)
+    pymol_handle.write('sel protein, polymer\n')
+    pymol_handle.write('show cartoon, protein\n')
+    pymol_handle.write('hide lines, protein\n')
+    fhandle=open(file)
+    for line in fhandle.readlines():
+        if '#' in line:
+            pass
+        else:
+            frames=int(line.split()[5])
+            fraction=float(frames)/total_frames
+            percent=fraction*100
+            if percent < 5:
+                break
+            res1_num=line.split()[2].split(':')[0]
+            res1_name=line.split()[2].split(':')[1]
+            res2_num=line.split()[3].split(':')[0]
+            res2_name=line.split()[3].split(':')[1]
+            res1_chain=reverse_dict[res1_num][0]
+            orig_res1_num=reverse_dict[res1_num][1]
+            res2_chain=reverse_dict[res2_num][0]
+            orig_res2_num=reverse_dict[res2_num][1]
+            # determine the atoms from other hbond data, le sigh
+            location=numpy.abs(numpy.array(amberdata[res1_num]['percent'])-percent).argmin()
+            atom1=amberdata[res1_num]['atom'][location]
+            atom1=atom1.split('_')[0]
+            location=numpy.abs(numpy.array(amberdata[res2_num]['percent'])-percent).argmin()
+            atom2=amberdata[res2_num]['atom'][location]
+            atom2=atom2.split('_')[0]
+            #print 'bridge persists for %0.2f %% of simulation' % percent
+            pymol_res1='%s/%s/%s' % (res1_chain, orig_res1_num, atom1)
+            pymol_res2='%s/%s/%s' % (res2_chain, orig_res2_num, atom2)
+            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res1_chain, orig_res1_num))
+            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res2_chain, orig_res2_num))
+            hcolor=utilities.percent_score(percent)
+            if hcolor=='red':
+                pymol_handle.write('dist %s_strong_bridge, %s, %s\n' % (outname, pymol_res1, pymol_res2))
+                pymol_handle.write('color %s, %s_strong_bridge\n' % (hcolor, outname))
+            if hcolor=='pink':
+                pymol_handle.write('dist %s_medium_bridge, %s, %s\n' % (outname, pymol_res1, pymol_res2))
+                pymol_handle.write('color %s, %s_medium_bridge\n' % (hcolor, outname))
+            if hcolor=='yellow':
+                pymol_handle.write('dist %s_weak_bridge, %s, %s\n' % (outname, pymol_res1, pymol_res2))
+                pymol_handle.write('color %s, %s_weak_bridge\n' % (hcolor, outname))
+    pymol_handle.write('hide labels, %s_weak_bridge\n' % outname)
+    pymol_handle.write('hide labels, %s_medium_bridge\n' % outname)
+    pymol_handle.write('hide labels, %s_strong_bridge\n' % outname)
+    fhandle.close()
+    pymol_handle.close()
     return 
 

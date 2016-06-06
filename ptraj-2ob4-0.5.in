@@ -1,6 +1,0 @@
-#trajin ../aln-protein-2ob4-altHIS83-md1-2-500ns.dcd
-#reference ../aln-protein-2ob4-altHIS83-reference.pdb
-trajin ../aln-protein-2ob4-md1-2-500ns-stride10.dcd
-reference ../aln-desmond_cdc34_2ob4_reference.pdb
-rms reference out rmsd-ca.dat @CA
-cluster :21,107,110,111,41,43,44,45 mass epsilon 0.5 out 2ob4-pocket-d0.5-cluster_out averagelinkage gracecolor summary 2ob4-pocket-d0.5-pocket-summary_out info 2ob4-pocket-d0.5-pocket-Cluster_info repout  2ob4-pocket-d0.5-pocketcentroid repfmt pdb

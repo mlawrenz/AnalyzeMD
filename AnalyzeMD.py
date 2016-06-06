@@ -119,26 +119,14 @@ def sovlent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
         print err
         sys.exit()
     print "PDB file with {1} occupancy are in {0}_water{1}.pdb".format(outname, occupancy)
-
+    for line in output.split('\n'):
+        if 'Coordinate processing' in line:
+            total_frames=int(line.split()[5])
+            print "processed %s frames" % total_frames
     if selection!=None:
-        file='%s_solvout.dat' % outname
-        fhandle=open(file)
-        for line in fhandle.readlines():
-            if '#' in line:
-                pass
-            else:
-                fraction=float(line.split()[4])
-                acceptor=line.split()[0]
-                donor1=line.split()[1]
-                donor2=line.split()[2]
-                res1_chain, res1_name, orig_res1_num, atom1=utilities.parse_hbond(acceptor, reverse_dict, accept=True)
-                res2_chain, res2_name, orig_res2_num, atom2=utilities.parse_hbond(donor1, reverse_dict)
-                if fraction*100 < 1:
-                    break
-                hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
-                percent=fraction*100
-                print hbond, 'persists for %0.2f %% of simulation' % percent
-        fhandle.close()
+        solvent_amber_data=utilities.process_solvent_output(outname, reverse_dict)
+        file='%s_bridgeout.dat' % outname
+        external_file_io.write_bridged_residues_to_pml(file, solvent_amber_data, total_frames, outname, reverse_dict, ref)
     return
 
 def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):

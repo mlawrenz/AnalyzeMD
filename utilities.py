@@ -24,6 +24,42 @@ def run_linux_process(command):
     output, err=p.communicate()
     return output, err
 
+def process_solvent_output(outname, reverse_dict):
+    solvent_amber_data=dict()
+    file='%s_solvout.dat' % outname
+    ohandle=open('%s_hbonds_pdbnum.out' % outname, 'w')
+    fhandle=open(file)
+    for line in fhandle.readlines():
+        if '#' in line:
+            pass
+        else:
+            fraction=float(line.split()[4])
+            percent=fraction*100
+            if percent < 5:
+                break
+            acceptor=line.split()[0]
+            donor1=line.split()[1]
+            for mask in [acceptor, donor1]:
+                if 'Solvent' in mask:
+                    continue
+                num=mask.split('@')[0].split('_')[1]
+                atom=mask.split('@')[1].split('-')[0]
+                if num not in solvent_amber_data.keys():
+                    solvent_amber_data[num]=dict() 
+                    solvent_amber_data[num]['atom']=[]
+                    solvent_amber_data[num]['percent']=[]
+                solvent_amber_data[num]['atom'].append(atom)
+                solvent_amber_data[num]['percent'].append(percent)
+            res1_chain, res1_name, orig_res1_num, atom1=parse_hbond(acceptor, reverse_dict, accept=True)
+            res2_chain, res2_name, orig_res2_num, atom2=parse_hbond(donor1, reverse_dict)
+            hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
+            ohandle.write('%s\n' % hbond)
+            #print hbond, 'persists for %0.2f %% of simulation' % percent
+    ohandle.close()
+    print "see solvent hbonded residues in %s_hbonds_pdbnum.out" % outname
+    fhandle.close()
+    return solvent_amber_data
+
 
 def check_selection_boolean(ref, target):
     st=StructureReader(ref).next()
