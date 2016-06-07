@@ -48,14 +48,21 @@ def map_file_by_index(datafile, pdb_data, bb=False):
     prev_resnum=0
     index=0
     #print "in map function"
+    check=[]
     num_residues=1
+    import pdb
+    pdb.set_trace()
+    filestart=True
     for line in pdb_data:
         if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
             resnum = int(line[23:26].strip())
-            if prev_resnum==0:
+            if filestart==True:
                 prev_resnum=resnum
+                check.append('%s%s' % (resnum, line.split()[3]))
+                filestart=False
             if resnum!=prev_resnum:
                 prev_resnum=resnum
+                check.append('%s%s' % (resnum, line.split()[3]))
                 if bb is not False:
                     if not resnum in bb:
                         print "excluding entry ", line.split()[3]
