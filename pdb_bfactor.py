@@ -50,8 +50,6 @@ def map_file_by_index(datafile, pdb_data, bb=False):
     #print "in map function"
     check=[]
     num_residues=1
-    import pdb
-    pdb.set_trace()
     filestart=True
     for line in pdb_data:
         if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
