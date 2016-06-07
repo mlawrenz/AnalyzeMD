@@ -358,9 +358,11 @@ Examples:
 |n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd  rmsd_calc rmsd-all
 |n
-$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd clustering --selection '50-55,131.B' ':48,49.F' -o inter-chain -d 1.0
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd clustering --selection '50-55,131.B' '48,49.F' -o inter-chain -d 1.0
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd clustering --radius 4 -o protein-ligand -d 1.0
 |n
-$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o 4mdk-holo-redo --radius 4 
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o inter-chain --selection '*.B' '*.C'
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r reference.pdb -t trj.dcd hbonds -o protein-ligand --radius 5
 |n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r waters-reference.pdb -t waters-trj.dcd solvent_calc  -o 'ligand' --selection 'DRG.L'
 ''', usage='%(prog)s [OPTIONS]', formatter_class=MultilineFormatter)
