@@ -10,6 +10,12 @@ very important and require specific AMBER atom ordering and format, and will be 
 Align this to a reference (-r) xtal.pdb using AnalyzeMD.py pdb_align. Do not just use PyMol,
 the output PDB reorders hydrogens and will break the analysis.
 
+You can load in trajectories into vmd to look at the movie directly from the
+command line wiht this command:
+vmd -pdb xtal.pdb -dcd traj.dcd
+
+You the "Analysis --> RMSD Trajectory Tool" to align the trajectory.
+
 3) Run rmsd_calc using rmsd-all, load the pml file in rmsd-analysis to visualize
 residues that deviate the most from starting position (red) color. Using
 rmsf-all will show you residues that are most *flexible* throughout the
