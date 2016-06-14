@@ -184,6 +184,8 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
     make_analysis_folder(cwd, 'hbonds')
+    shutil.copy(ref, './')
+    ref=ref_basename
     #make sure have absolute path since working in analysis folder now
     residue_mapper=utilities.map_residues(ref)
     new_ambmask1=utilities.check_cluster_pdbfile(ref, [selection[0],], outname)
@@ -353,6 +355,9 @@ positional arguments (NOTE THAT POSITIONS FOR ARGS MATTER). See additional optio
 $SCHRODINGER/run /home/mlawrenz/AnalyzeMD/AnalyzeMD.py clustering -h
 |n
 Examples:
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py traj_combine -f file_list -o CDC34A_Total_500ns
+|n
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r xtal.pdb pdb_align -f test.pdb 
 |n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd  rmsd_calc rmsd-all
 |n
@@ -368,7 +373,7 @@ $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r waters-reference.pdb -t waters-trj
 
     #parser.add_argument("analysis", choices=["rmsd", "clustering", "hbond"])
     parser.add_argument('-r', '--reffile', dest='reffile',
-                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY', required=True)
+                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY')
     parser.add_argument('-t', '--trjfile', dest='trjfile', help='DCD trj for trajectory analysis')
     parser.add_argument('--debug', dest='debug', action="store_true")
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
@@ -410,7 +415,7 @@ defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
     c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, radius_parser, outname_parser], help=''' Analyze water occupancy over trajectory and compute solvent hbonds to a provided
 mask. Will output a PDB file with water density at a %% of the max density.
 Default this is 0.8. Also will report significant solvent hbonds.''')
-    c_parser.add_argument('-o', '--occupancy', dest='occupancy', default=0.8,
+    c_parser.add_argument('--occupancy', dest='occupancy', default=0.8,
                       help='Occupancy >=X%% of the max density name used to output PDB file with these waters.')
     args = parser.parse_args()
     return args
