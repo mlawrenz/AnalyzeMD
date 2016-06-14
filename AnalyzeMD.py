@@ -213,11 +213,9 @@ def selection_checker(cwd, reffile, selection):
     return
 
 
-def traj_combine(cwd, ref, file_list):
-    basename=os.path.basename(ref)
-    basename=basename.split('.pdb')[0]
+def traj_combine(cwd, outname, file_list):
     program='%s/catdcd' % os.environ['CATDCD_DIR']
-    command='{0} -o {1}/combine-{2}.dcd -otype dcd -dcd `cat {3}`'.format(program, cwd, basename, file_list)
+    command='{0} -o {1}/combine-{2}.dcd -otype dcd -dcd `cat {3}`'.format(program, cwd, outname, file_list)
     output, err=run_linux_process(command)
     erroroutput=False
     if 'rror' in err:
@@ -229,10 +227,11 @@ def traj_combine(cwd, ref, file_list):
         print "ERROR IN CATDCD CALCULATION"
         print "CHECK catdcd.err"
         sys.exit()
-    if not os.path.exists('{0}/combine-{1}.dcd'.format(cwd, basename)):
+    if not os.path.exists('{0}/combine-{1}.dcd'.format(cwd, outname)):
         print "ERROR IN CATDCD CALCULATION"
     else:
-        print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, basename)
+        print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, outname)
+
     return
 
 def pdb_align(ref, inputfile, asl='backbone'):
@@ -277,12 +276,6 @@ def main(args):
     if args.debug==True:
         import pdb
         pdb.set_trace()
-    if args.reffile is None:
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
-    if not os.path.exists(args.reffile):
-        print "SUPPLY A REFERENCE PDBFILE"
-        sys.exit()
     try:
         os.environ['SCHRODINGER']
     except KeyError:
@@ -292,18 +285,35 @@ def main(args):
     if args.analysis=='traj_combine':
         try:
             os.environ['CATDCD_DIR']
-            traj_combine(cwd, args.reffile, args.file_list)
-            sys.exit()
+            if args.outname is None:
+                print "SUPPLY A NAME FOR YOUR COMBINED TRAJ"
+                sys.exit()
+            else:
+                traj_combine(cwd, args.outname, args.file_list)
+                sys.exit()
         except KeyError:
             print "CATDCD_DIR environment variable is not set"
             print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
             sys.exit()
+    if args.reffile is None:
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    if not os.path.exists(args.reffile):
+        print "SUPPLY A REFERENCE PDBFILE"
+        sys.exit()
+    abs_path_ref=os.path.abspath(args.reffile)
+    path_to_ref=os.path.dirname(abs_path_ref)
+    if path_to_ref==cwd:
+        pass
+    else:
+        shutil.copy(abs_path_ref, './')
+    ref_basename=os.path.basename(args.reffile)
     if args.analysis=='pdb_align':
         if args.radius!=None:
             asl='fillres within 10 (ligand)'
-            pdb_align(args.reffile, args.inputfile, asl)
+            pdb_align(ref_basename, args.inputfile, asl)
         else:
-            pdb_align(args.reffile, args.inputfile)
+            pdb_align(ref_basename, args.inputfile)
         sys.exit()
     # run jobs that need AMBER
     try: 
@@ -370,14 +380,14 @@ $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r waters-reference.pdb -t waters-trj
 
     #parser.add_argument("analysis", choices=["rmsd", "clustering", "hbond"])
     parser.add_argument('-r', '--reffile', dest='reffile',
-                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY', required=True)
+                      help='reference structure PDB file, for RMSD and visualization. MUST MATCH TRAJECTORY')
     parser.add_argument('-t', '--trjfile', dest='trjfile', help='DCD trj for trajectory analysis')
     parser.add_argument('--debug', dest='debug', action="store_true")
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
     mask_parser=argparse.ArgumentParser(add_help=False)
     outname_parser=argparse.ArgumentParser(add_help=False)
-    outname_parser.add_argument('--outname', dest='outname', default='protein',
-                      help='name for hbonds output, please do not use dashes or weird characters')
+    outname_parser.add_argument('-o', '--outname', dest='outname', default='protein',
+                      help='name for output, please do not use dashes or weird characters', required=True)
     mask_parser.add_argument('--selection', nargs='*', dest='selection', help='''Residues to use for analysis, with separated by
 commas and dashes and chains specified at the end with a period. If you do not
 provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
@@ -388,7 +398,7 @@ Can include multiple selections from multiple chains.
     a_parser=subparsers.add_parser("pdb_align", parents=[radius_parser], help='Align 2 structure files')
     a_parser.add_argument('-f', '--inputfile', dest='inputfile',
                       help='file to align to your reference passed in with -r')
-    d_parser=subparsers.add_parser("traj_combine", help='Combine DCD files into one')
+    d_parser=subparsers.add_parser("traj_combine",  parents=[outname_parser], help='Combine DCD files into one')
     d_parser.add_argument('-f', '--file-list', dest='file_list',
                       help='file with DCD trajectories to be combined')
     x_parser=subparsers.add_parser("selection_check", parents=[mask_parser, radius_parser], help='''
@@ -401,25 +411,21 @@ The chosen datatype is mapped to the bfactors of reference file for visualizatio
 bfactor-${choice}-${referencefile}.pdb
 ''')
     r_parser.add_argument('rmsdtype',choices=['rmsd-all', 'rmsd-bb', 'rmsf-all', 'rmsf-bb'], help='type of rmsd or rmsf calculation, using all heavy atoms or just backbone CA atoms')
-    c_parser=subparsers.add_parser("clustering", parents=[mask_parser, radius_parser], help='''
+    c_parser=subparsers.add_parser("clustering", parents=[mask_parser, radius_parser, outname_parser], help='''
 Uses hierarchical clustering and average linkage for RMSD of selected residues
 passed in with selection, and the minimum distance between clusters is
 specified by the distance argument.''')
     c_parser.add_argument('-d', '--distance', dest='distance', default=2.0,
                       help='clustering RMSD cutoff to define clusters. recommend 2 for most small changes.')
-    c_parser.add_argument('-o', '--outname', dest='outname', default='set',
-                      help='name for clustering output, will precede a name NAME-cluster-*')
-    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser], help='''
+    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser, outname_parser], help='''
 Compute hydrogen bonds between two groups of residues specified with --selection
 (can be all to all with same selection. Output is pml file with "strong" hbonds
 defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 "weak" as >=1 and < 10 and yellow.''')
-    h_parser.add_argument('-o', '--outname', dest='outname', default='set',
-                      help='name for hbonds output, please do not use dashes or weird characters')
     c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, radius_parser, outname_parser], help=''' Analyze water occupancy over trajectory and compute solvent hbonds to a provided
 mask. Will output a PDB file with water density at a %% of the max density.
 Default this is 0.8. Also will report significant solvent hbonds.''')
-    c_parser.add_argument('-o', '--occupancy', dest='occupancy', default=0.8,
+    c_parser.add_argument('--occupancy', dest='occupancy', default=0.8,
                       help='Occupancy >=X%% of the max density name used to output PDB file with these waters.')
     args = parser.parse_args()
     return args
