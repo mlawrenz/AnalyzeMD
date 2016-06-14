@@ -374,7 +374,7 @@ $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py  -r waters-reference.pdb -t waters-trj
     subparsers= parser.add_subparsers(help='analysis suboption choices', dest='analysis')
     mask_parser=argparse.ArgumentParser(add_help=False)
     outname_parser=argparse.ArgumentParser(add_help=False)
-    outname_parser.add_argument('--outname', dest='outname', default='protein', required=True, help='name for output, please do not use dashes or weird characters')
+    outname_parser.add_argument('-o', '--outname', dest='outname', default='protein', required=True, help='name for output, please do not use dashes or weird characters')
     mask_parser.add_argument('--selection', nargs='*', dest='selection', help='''Residues to use for analysis, with separated by
 commas and dashes and chains specified at the end with a period. If you do not
 provide a chain then we assign it to chain A.  i.e. 45-55.A 68,128,155.B period.
