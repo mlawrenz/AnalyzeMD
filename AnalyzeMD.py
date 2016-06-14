@@ -184,6 +184,8 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
     make_analysis_folder(cwd, 'hbonds')
+    shutil.copy(ref, './')
+    ref=ref_basename
     #make sure have absolute path since working in analysis folder now
     residue_mapper=utilities.map_residues(ref)
     new_ambmask1=utilities.check_cluster_pdbfile(ref, [selection[0],], outname)
@@ -231,7 +233,6 @@ def traj_combine(cwd, outname, file_list):
         print "ERROR IN CATDCD CALCULATION"
     else:
         print "combined dcd trajetcory is {0}/combine-{1}.dcd".format(cwd, outname)
-
     return
 
 def pdb_align(ref, inputfile, asl='backbone'):
@@ -276,11 +277,6 @@ def main(args):
     if args.debug==True:
         import pdb
         pdb.set_trace()
-    try:
-        os.environ['SCHRODINGER']
-    except KeyError:
-        print "SCHRODINGER environment variable is not set"
-        sys.exit()
     # run jobs that don't need other checks
     if args.analysis=='traj_combine':
         try:
@@ -295,6 +291,11 @@ def main(args):
             print "CATDCD_DIR environment variable is not set"
             print "On AWS this is /home/mlawrenz/linuxamd64/bin/catdcd4.0/"
             sys.exit()
+    try:
+        os.environ['SCHRODINGER']
+    except KeyError:
+        print "SCHRODINGER environment variable is not set"
+        sys.exit()
     if args.reffile is None:
         print "SUPPLY A REFERENCE PDBFILE"
         sys.exit()
@@ -365,6 +366,9 @@ positional arguments (NOTE THAT POSITIONS FOR ARGS MATTER). See additional optio
 $SCHRODINGER/run /home/mlawrenz/AnalyzeMD/AnalyzeMD.py clustering -h
 |n
 Examples:
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py traj_combine -f file_list -o CDC34A_Total_500ns
+|n
+$SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r xtal.pdb pdb_align -f test.pdb 
 |n
 $SCHRODINGER/run ~/AnalyzeMD/AnalyzeMD.py -r reference.pdb -t trj.dcd  rmsd_calc rmsd-all
 |n
@@ -398,7 +402,7 @@ Can include multiple selections from multiple chains.
     a_parser=subparsers.add_parser("pdb_align", parents=[radius_parser], help='Align 2 structure files')
     a_parser.add_argument('-f', '--inputfile', dest='inputfile',
                       help='file to align to your reference passed in with -r')
-    d_parser=subparsers.add_parser("traj_combine",  parents=[outname_parser], help='Combine DCD files into one')
+    d_parser=subparsers.add_parser("traj_combine", parents=[outname_parser], help='Combine DCD files into one')
     d_parser.add_argument('-f', '--file-list', dest='file_list',
                       help='file with DCD trajectories to be combined')
     x_parser=subparsers.add_parser("selection_check", parents=[mask_parser, radius_parser], help='''
@@ -411,15 +415,11 @@ The chosen datatype is mapped to the bfactors of reference file for visualizatio
 bfactor-${choice}-${referencefile}.pdb
 ''')
     r_parser.add_argument('rmsdtype',choices=['rmsd-all', 'rmsd-bb', 'rmsf-all', 'rmsf-bb'], help='type of rmsd or rmsf calculation, using all heavy atoms or just backbone CA atoms')
-    c_parser=subparsers.add_parser("clustering", parents=[mask_parser, radius_parser, outname_parser], help='''
-Uses hierarchical clustering and average linkage for RMSD of selected residues
-passed in with selection, and the minimum distance between clusters is
+    c_parser=subparsers.add_parser("clustering", parents=[mask_parser, radius_parser, outname_parser], help=''' Uses hierarchical clustering and average linkage for RMSD of selected residues passed in with selection, and the minimum distance between clusters is
 specified by the distance argument.''')
     c_parser.add_argument('-d', '--distance', dest='distance', default=2.0,
                       help='clustering RMSD cutoff to define clusters. recommend 2 for most small changes.')
-    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser, outname_parser], help='''
-Compute hydrogen bonds between two groups of residues specified with --selection
-(can be all to all with same selection. Output is pml file with "strong" hbonds
+    h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser, outname_parser], help=''' Compute hydrogen bonds between two groups of residues specified with --selection (can be all to all with same selection. Output is pml file with "strong" hbonds
 defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 "weak" as >=1 and < 10 and yellow.''')
     c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, radius_parser, outname_parser], help=''' Analyze water occupancy over trajectory and compute solvent hbonds to a provided
