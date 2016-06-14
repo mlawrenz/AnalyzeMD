@@ -102,6 +102,7 @@ hide (h. and (e. c extend 1))
     return
 
 def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
+    objectname=os.path.basename(ref).split('.pdb')[0]
     pymol_handle=open('%s_hbonds.pml' % outname, 'w')
     pymol_handle.write('load %s\n' % ref)
     pymol_handle.write('sel protein, polymer\n')
@@ -129,10 +130,10 @@ def write_all_hbonds_to_pml(files, outname, residue_mapper, ref):
             hbond='%s.%s%s@%s-%s.%s%s@%s' % (res1_chain, res1_name,orig_res1_num,atom1,res2_chain, res2_name, orig_res2_num,atom2)
             print hbond, percent
             ohandle.write('%s\t%s\n' % (hbond, percent))
-            pymol_accept='%s/%s/%s' % (res1_chain, orig_res1_num, atom1)
-            pymol_donor='%s/%s/%s' % (res2_chain, orig_res2_num, atom2)
-            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res1_chain, orig_res1_num))
-            pymol_handle.write('show sticks, chain %s and resi %s\n' % (res2_chain, orig_res2_num))
+            pymol_accept='/%s//%s/%s/%s' % (objectname, res1_chain, orig_res1_num, atom1)
+            pymol_donor='/%s//%s/%s/%s' % (objectname, res2_chain, orig_res2_num, atom2)
+            pymol_handle.write('show sticks, %s and chain %s and resi %s\n' % (objectname, res1_chain, orig_res1_num))
+            pymol_handle.write('show sticks, %s and chain %s and resi %s\n' % (objectname, res2_chain, orig_res2_num))
             hcolor=utilities.percent_score(percent)
             if hcolor=='red':
                 pymol_handle.write('dist %s_strong_hbonds, %s, %s\n' % (outname, pymol_donor, pymol_accept))
