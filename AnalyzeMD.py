@@ -96,20 +96,40 @@ bfactor-%s-%s           # PDB file with B factors filled with specified datatype
     read_handle.close()
     return
 
-def sovlent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
+def solvent_calc(cwd, outname, ref, trjfile, selection=None, occupancy=0.8):
     ref=os.path.abspath(ref)
     ref_basename=os.path.basename(ref)
     trjfile=os.path.abspath(trjfile)
+    trj_basename=os.path.basename(trjfile)
     residue_mapper=utilities.map_residues(ref)
     reverse_dict = {value: keypath for keypath, value in utilities.make_keypaths(residue_mapper)}
     #make sure have absolute path since working in analysis folder now
     make_analysis_folder(cwd, 'solvent')
+    # have to get grid center
+    external_file_io.write_solvent_vmd_script(ref, trjfile)
+    command='%s/vmd -dispdev text -e align.tcl' % (os.environ['VMD_DIR'])
+    output, err=run_linux_process(command)
+    vmd_ref='vmd-aligned-%s' % ref_basename
+    vmd_trj='vmd-aligned-%s' % trj_basename
+    if 'rror' in output:
+        numpy.savetxt('vmd.err', output.split('\n'), fmt='%s')
+        print "ERROR IN VMD"
+        print "CHECK vmd.err"
+        print output.split('\n')
+        sys.exit()
+    if not os.path.exists('vmd-aligned-%s' % trj_basename):
+        print "DID NOT WRITE ALIGNED DCD FILE"
+        sys.exit()
+
+    file=open('origin.dat')
+    origin=file.readlines()[0]
+    file.close()
     # test that the residues you cluster on are the right ones
     if selection!=None:
         new_ambmask=utilities.check_cluster_pdbfile(ref, selection, outname)
-        external_file_io.write_solvent_ptraj_file(ref, trjfile, new_ambmask, outname, occupancy)
+        external_file_io.write_solvent_ptraj_file(vmd_ref, vmd_trj, origin, new_ambmask, outname, occupancy)
     else:
-        external_file_io.write_solvent_ptraj_file(ref, trjfile, selection, outname, occupancy)
+        external_file_io.write_solvent_ptraj_file(vmd_ref, vmd_trj, origin, selection, outname, occupancy)
     command='%s/bin/cpptraj %s ptraj-water.in' %  (os.environ['AMBERHOME'], ref)
     output, err=run_linux_process(command)
     if 'rror' in err:
@@ -335,23 +355,27 @@ def main(args):
         rmsd_and_rmsf(cwd, args.reffile, args.trjfile, args.rmsdtype)
         sys.exit()
     # all analysis below requires these
-    if args.radius is None and args.selection is None:
-        print "Need to pass in a selection or radius around ligand"
-        sys.exit()
     if args.radius is not None:
         selection=utilities.get_residues_from_radius(args.radius, args.reffile)
     else:
         selection=args.selection
+    # does not have to have a selection
+    if args.analysis=='solvent_calc':    
+        solvent_calc(cwd, args.outname, args.reffile, args.trjfile, selection, args.occupancy)
+        sys.exit()
+    if args.radius is None and args.selection is None:
+        print "Need to pass in a selection or radius around ligand"
+        sys.exit()
     if args.analysis=='selection_check':
         selection_checker(cwd, args.reffile, selection)
         sys.exit()
     if args.analysis=='clustering':
         print "Running clustering analysis" 
         clustering(cwd, args.outname, args.reffile, args.trjfile, selection, args.distance)
+        sys.exit()
     if args.analysis=='hbonds':
         hbonds(cwd, args.outname, args.reffile, args.trjfile, selection)
-    if args.analysis=='solvent_calc':    
-        sovlent_calc(cwd, args.outname, args.reffile, args.trjfile, selection, args.occupancy)
+        sys.exit()
     print "done with analysis"
     
 

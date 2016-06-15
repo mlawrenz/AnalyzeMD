@@ -68,24 +68,60 @@ hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-a
 '''.format(trjfile, mask1, mask2, outname))
     return
 
-def write_solvent_ptraj_file(ref, trjfile, mask, outname, occupancy):
+def write_solvent_ptraj_file(vmd_ref, vmd_trjfile, origin, mask, outname, occupancy):
 #radial rad.dat 0.1 10.0 :T3P@O :346
 #radial rad2.dat 0.1 10.0 :T3P@H1 :346 
 #radial rad3.dat 0.1 10.0 :T3P@H2 :346 
+    x=origin.split()[0]
+    y=origin.split()[1]
+    z=origin.split()[2]
     ohandle=open('ptraj-water.in', 'w')
     ohandle.write('''
 trajin {0}
 reference {1}
 # Create average of solute to view with grid.
 #center {2}
-rms reference @C,CA,O,N
-grid {3}_water.dx 50 0.5 50 0.5 50 0.5 :T3P@O pdb {3}_water{4}.pdb max {4}'''.format(trjfile, ref, mask, outname, occupancy))
+grid {3}_water.dx 50 0.5 50 0.5 50 0.5 gridcenter {5} {6} {7} :T3P@O pdb {3}_water{4}.pdb max {4}'''.format(vmd_trjfile, vmd_ref, mask, outname, occupancy, x, y, z))
     if mask!=None:
         ohandle.write('''
 hbond H1 out {0}_hbond.dat {1}@N*,O* series avgout avgout.dat  printatomnum nointramol solventdonor :T3P@O  solventacceptor :T3P@O  solvout {0}_solvout.dat bridgeout {0}_bridgeout.dat 
 run
 runanalysis lifetime H1[solventhb] out {0}_lifetime.dat
 '''.format(outname, mask))
+    return
+
+
+def write_solvent_vmd_script(ref, trj):
+    ref_basename=os.path.basename(ref)
+    trj_basename=os.path.basename(trj)
+    ohandle=open('align.tcl', 'w')
+    ohandle.write('''
+mol load pdb {0}
+set n [molinfo top get numframes]
+if {{ $n > 1}} {{
+animate delete beg 1 end $n
+animate goto start
+}}
+mol addfile {1} type dcd waitfor all
+set n [molinfo top get numframes]
+for {{set t 0}} {{$t < $n}} {{incr t}} {{
+set all [atomselect top "all" frame $t]
+set ref [atomselect top "backbone" frame 0]
+set bb [atomselect top "backbone" frame $t]
+set trans_mat [measure fit $bb $ref]
+$all move $trans_mat
+}}
+set sel [atomselect top all]
+set origin [measure center $sel]
+set fd [open "origin.dat" w]
+puts $fd $origin
+close $fd
+
+animate write dcd vmd-aligned-{3}  sel $all waitfor all 
+animate goto start
+animate write pdb vmd-aligned-{2} sel $all beg 0 end 0
+exit'''.format(ref, trj, ref_basename, trj_basename))
+    ohandle.close()
     return
 
 
