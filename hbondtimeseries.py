@@ -6,7 +6,7 @@ import operator
 import utilities
 
 
-def main(dir, residue_mapper, plot=False):
+def correlations(dir, residue_mapper, plot=False):
     reverse_dict = {value: keypath for keypath, value in utilities.make_keypaths(residue_mapper)}
     files=glob.glob('%s/time*dat' % dir)
     n=0

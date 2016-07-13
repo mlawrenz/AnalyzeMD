@@ -63,8 +63,8 @@ def write_hbond_ptraj(trjfile, mask1, mask2, outname):
     ohandle=open('ptraj-hbonds.in', 'w')
     ohandle.write('''
 trajin {0}
-hbond H1 donormask {1}@N*,O* acceptormask {2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series 
-hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series 
+hbond H1 donormask {1}@N*,O* acceptormask {2}&@N*,O* nointramol out numhb-{3}-donor.dat  avgout avghb-{3}-donor.dat series uuseries time-hb-{3}-donor.dat
+hbond H2 acceptormask {1}&@N*,O* donormask {2}&@N*,O* nointramol out numhb-{3}-accept.dat avgout avghb-{3}-accept.dat series uuseries time-hb-{3}-accept.dat
 '''.format(trjfile, mask1, mask2, outname))
     return
 

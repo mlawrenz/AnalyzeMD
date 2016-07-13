@@ -223,6 +223,8 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     files=glob.glob('avghb-%s-*.dat' % outname)
     external_file_io.write_all_hbonds_to_pml(files, outname, residue_mapper,  ref)
     print "wrote %s_hbonds.pml" % outname
+    import hbondtimeseries
+    hbondtimeseries.compute(os.getcwd(), residue_mapper) 
     return
 
 
