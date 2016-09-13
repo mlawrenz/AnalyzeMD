@@ -52,6 +52,7 @@ def map_file_by_index(datafile, pdb_data, bb=False):
     num_residues=1
     filestart=True
     for line in pdb_data:
+        #print line
         if line[0:6] == "ATOM  " or line[0:6] == "HETATM":
             resnum = int(line[23:26].strip())
             if filestart==True:
@@ -96,6 +97,8 @@ def main(pdbfile, datafile, bb_flag=False):
 #    """
 #    Call if program called from command line.
 #    """
+    import pdb
+    pdb.set_trace()
     f = open(pdbfile,'r')
     pdb_data = f.readlines()
     f.close()

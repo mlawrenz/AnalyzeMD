@@ -195,7 +195,7 @@ def clustering(cwd, outname, ref, trjfile, cluster, d=2.0):
         os.remove(file)
     return
 
-def hbonds(cwd, outname, ref, trjfile, selection):
+def hbonds(cwd, outname, ref, trjfile, selection, correlation=False):
     if len(selection) != 2:
         print "HBOND REQUIRES 2 INPUT GROUPS"
         print "Your selection is:", selection
@@ -217,14 +217,15 @@ def hbonds(cwd, outname, ref, trjfile, selection):
     if 'rror' in err:
         numpy.savetxt('ptraj-hbonds.err', err.split('\n'), fmt='%s')
         print "ERROR IN CPPTRAJ RMSD CALCULATION"
-        print "CHECK ptraj-cluster.err"
+        print "CHECK ptraj-hbonds.err"
         print err
         sys.exit()
     files=glob.glob('avghb-%s-*.dat' % outname)
     external_file_io.write_all_hbonds_to_pml(files, outname, residue_mapper,  ref)
     print "wrote %s_hbonds.pml" % outname
-    import hbondtimeseries
-    hbondtimeseries.compute(os.getcwd(), residue_mapper) 
+    if correlation==True:
+        import hbondtimeseries
+        hbondtimeseries.correlations(os.getcwd(), residue_mapper, outname) 
     return
 
 
@@ -376,7 +377,11 @@ def main(args):
         clustering(cwd, args.outname, args.reffile, args.trjfile, selection, args.distance)
         sys.exit()
     if args.analysis=='hbonds':
-        hbonds(cwd, args.outname, args.reffile, args.trjfile, selection)
+        if args.correlation==True:
+            correlation=True
+        else:
+            correlation=False
+        hbonds(cwd, args.outname, args.reffile, args.trjfile, selection, correlation)
         sys.exit()
     print "done with analysis"
     
@@ -448,6 +453,7 @@ specified by the distance argument.''')
     h_parser=subparsers.add_parser("hbonds", parents=[mask_parser, radius_parser, outname_parser], help=''' Compute hydrogen bonds between two groups of residues specified with --selection (can be all to all with same selection. Output is pml file with "strong" hbonds
 defined as  >= 50.0 and red, "medium" >= 10 and < 50.0 and pink, and
 "weak" as >=1 and < 10 and yellow.''')
+    h_parser.add_argument('--correlation', dest='correlation', action="store_true")
     c_parser=subparsers.add_parser("solvent_calc", parents=[mask_parser, radius_parser, outname_parser], help=''' Analyze water occupancy over trajectory and compute solvent hbonds to a provided
 mask. Will output a PDB file with water density at a %% of the max density.
 Default this is 0.8. Also will report significant solvent hbonds.''')
